@@ -25,6 +25,10 @@ class GGUF:
                 key, value = self._parse_metadata_kv(file)
                 self.metadata_kv[key] = value
 
+            self.tensor_infos = [
+                self._parse_tensor_info(file) for _ in range(self.tensor_count)
+            ]
+
     def _parse_metadata_kv(self, file: io.BufferedReader) -> None:
         key_len, = struct.unpack("<Q", file.read(8))
         key = file.read(key_len).decode()
@@ -71,7 +75,19 @@ class GGUF:
             case 12:  # FLOAT64
                 value, = struct.unpack("<d", file.read(8))
         return value
-        
+
+    def _parse_tensor_info(self, file: io.BufferedReader) -> None:
+        string_len, = struct.unpack("<Q", file.read(8))
+        string = file.read(string_len).decode()
+
+        n_dimensions, = struct.unpack("<L", file.read(4))
+        dimensions = list(
+            struct.unpack(f"<{n_dimensions}Q", file.read(8 * n_dimensions))
+        )
+
+        tensor_type, offset = struct.unpack("<LQ", file.read(12))
+
+        return (string, dimensions, tensor_type, offset)
 
     def __repr__(self) -> str:
         return " ".join(
@@ -82,6 +98,7 @@ class GGUF:
                 "tensor_count",
                 "metadata_kv_count",
                 "metadata_kv",
+                "tensor_infos",
             ]
         )
 
