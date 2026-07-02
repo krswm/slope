@@ -6,10 +6,6 @@ import io
 import struct
 
 
-class ArrayEncountered(Exception):
-    pass
-
-
 class GGUF:
     def __init__(self, file_name: str) -> None:
         self._file_name = file_name
@@ -26,18 +22,21 @@ class GGUF:
 
             self.metadata_kv = {}
             for _ in range(self.metadata_kv_count):
-                try:
-                    key, value = self._parse_metadata_kv(file)
-                    self.metadata_kv[key] = value
-                except ArrayEncountered:
-                    print("array encountered")
-                    break
+                key, value = self._parse_metadata_kv(file)
+                self.metadata_kv[key] = value
 
     def _parse_metadata_kv(self, file: io.BufferedReader) -> None:
         key_len, = struct.unpack("<Q", file.read(8))
         key = file.read(key_len).decode()
 
         value_type, = struct.unpack("<L", file.read(4))
+        value = self._parse_metadata_value(file, value_type)
+
+        return key, value
+
+    def _parse_metadata_value(
+        self, file: io.BufferedReader, value_type: int
+    ) -> None:
         match value_type:
             case 0:  # UINT8
                 value, = struct.unpack("<B", file.read(1))
@@ -59,19 +58,19 @@ class GGUF:
                 value_len, = struct.unpack("<Q", file.read(8))
                 value = file.read(value_len).decode()
             case 9:  # ARRAY
-                # Hmmm...
-                # The spec says array can be nested.
-                # I need to rework the parsing algorithm later...
-                # I'll stop parsing the KV just for now.
-                raise ArrayEncountered
+                # Recursion!
+                array_type, array_len = struct.unpack("<LQ", file.read(12))
+                value = [
+	            self._parse_metadata_value(file, array_type)
+                    for _ in range(array_len)
+                ]
             case 10:  # UINT64
                 value, = struct.unpack("<Q", file.read(8))
             case 11:  # INT64
                 value, = struct.unpack("<q", file.read(8))
             case 12:  # FLOAT64
                 value, = struct.unpack("<d", file.read(8))
-
-        return key, value
+        return value
         
 
     def __repr__(self) -> str:
