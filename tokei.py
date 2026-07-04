@@ -21,9 +21,13 @@ class Tokenizer:
 
         tokens = []
         start = 0
-        stop = 0
-        while stop < len(text):
-            segment = text[start:stop + 1]
+        stop = 1
+        stop_of_last_match = 1
+        while stop <= len(text):
+            segment = text[start:stop]
+
+            if segment in self._table:
+                stop_of_last_match = stop
 
             tokens_starting_with_segment = [
                 token for token in self._table
@@ -31,13 +35,11 @@ class Tokenizer:
             ]
             print(f"{segment:32}{tokens_starting_with_segment}")
 
-            if [segment] == tokens_starting_with_segment:
-                tokens.append(segment)
-                start = stop + 1
-                stop += 1
-            elif len(tokens_starting_with_segment) == 0:
-                tokens.append(segment[:-1])
-                start = stop
+            if len(tokens_starting_with_segment) == 0:
+                tokens.append(text[start:stop_of_last_match])
+                start = stop_of_last_match
+                stop = start + 1
+                stop_of_last_match = start + 1
             else:
                 stop += 1
         tokens.append(text[start:])

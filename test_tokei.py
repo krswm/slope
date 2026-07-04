@@ -23,5 +23,5 @@ class Test(unittest.TestCase):
     def test_text_to_tokens(self) -> None:
         self.assertEqual(
             self.tokenizer.text_to_tokens("Hello, world. konnichiwa"),
-            ["Hello", ",", " world", ".", " kon", "n", "ichi", "wa"],
+            ["Hello", ",", "Ġworld", ".", "Ġkon", "n", "ichi", "wa"],
         )
