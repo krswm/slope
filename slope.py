@@ -3,6 +3,7 @@
 
 
 import io
+import math
 import struct
 
 
@@ -28,6 +29,15 @@ class GGUF:
             self.tensor_infos = [
                 self._parse_tensor_info(file) for _ in range(self.tensor_count)
             ]
+
+            # Padding.
+            ALIGNMENT = self.metadata_kv.get("general.alignment", 32)
+            position = file.tell()
+            padding_size = math.ceil(position / ALIGNMENT) * ALIGNMENT - position
+            file.read(padding_size)
+            print(ALIGNMENT, position, padding_size)
+
+            self.tensor = file.read()
 
     def _parse_metadata_kv(self, file: io.BufferedReader) -> None:
         key_len, = struct.unpack("<Q", file.read(8))
@@ -130,5 +140,15 @@ if __name__ == "__main__":
                     else:
                         print(f"{key:64}{value!r}")
             case "print-tensor-infos":
-                for string, dimensions, tensor_type, offset in gguf.tensor_infos:
-                    print(f"{string:32}{dimensions!r:32}{tensor_type:4}{offset:32}")
+                for i, (string, dimensions, tensor_type, offset) in enumerate(gguf.tensor_infos):
+                    try:
+                        _, _, _, next_offset = gguf.tensor_infos[i + 1]
+                    except IndexError:
+                        next_offset = len(gguf.tensor)
+                    diff_offset = next_offset - offset
+
+                    size = math.prod(dimensions)
+
+                    diff_offset_to_size_ratio = diff_offset / size
+
+                    print(f"{string:32}{dimensions!r:32}{tensor_type:4}{offset:32}{diff_offset:32}{diff_offset_to_size_ratio:32}")
