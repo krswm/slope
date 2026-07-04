@@ -16,3 +16,12 @@ class Test(unittest.TestCase):
         self.assertEqual(self.tokenizer.number_to_token(51367), "foobar")
 
     # I was surprized that a nonsense word "foobar" has its own token!
+
+    def test_string_to_replaced_symbols(self) -> None:
+        self.assertEqual(self.tokenizer._string_to_replaced_symbols(" world"), "Ġworld")
+
+    def test_text_to_tokens(self) -> None:
+        self.assertEqual(
+            self.tokenizer.text_to_tokens("Hello, world. konnichiwa"),
+            ["Hello", ",", " world", ".", " kon", "n", "ichi", "wa"],
+        )
