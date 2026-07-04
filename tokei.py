@@ -23,12 +23,23 @@ class Tokenizer:
         start = 0
         stop = 0
         while stop < len(text):
-            segment = text[start : stop + 1]
-            if segment in self._table:
+            segment = text[start:stop + 1]
+
+            tokens_starting_with_segment = [
+                token for token in self._table
+                if token.startswith(segment)
+            ]
+            print(f"{segment:32}{tokens_starting_with_segment}")
+
+            if [segment] == tokens_starting_with_segment:
+                tokens.append(segment)
+                start = stop + 1
                 stop += 1
-            else:
+            elif len(tokens_starting_with_segment) == 0:
                 tokens.append(segment[:-1])
                 start = stop
+            else:
+                stop += 1
         tokens.append(text[start:])
 
         return tokens
