@@ -108,7 +108,13 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("file_name", help="GGUF file name")
+    parser.add_argument("--action", choices=["print-contents", "print-tensor-infos"], default="print-contents")
     args = parser.parse_args()
 
     gguf = GGUF(args.file_name)
-    print(gguf)
+    match args.action:
+        case "print-contents":
+            print(gguf)
+        case "print-tensor-infos":
+            for string, dimensions, tensor_type, offset in gguf.tensor_infos:
+                print(f"{string:32}{dimensions!r:32}{tensor_type:4}{offset:32}")
