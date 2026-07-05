@@ -35,7 +35,6 @@ class GGUF:
             position = file.tell()
             padding_size = math.ceil(position / ALIGNMENT) * ALIGNMENT - position
             file.read(padding_size)
-            print(ALIGNMENT, position, padding_size)
 
             self.tensor = file.read()
 
@@ -124,11 +123,22 @@ if __name__ == "__main__":
         default="print-contents",
     )
     parser.add_argument("--metadata-key")
+    parser.add_argument("--tensor-name")
     args = parser.parse_args()
 
     gguf = GGUF(args.file_name)
     if args.metadata_key:
         print(gguf.metadata_kv[args.metadata_key])
+    if args.tensor_name:
+        i, (_, dimensions, tensor_type, offset) = next((i, tensor_info) for i, tensor_info in enumerate(gguf.tensor_infos) if tensor_info[0] == args.tensor_name)
+        _, _, _, next_offset = gguf.tensor_infos[i + 1]
+        print(args.tensor_name, dimensions, tensor_type, offset, next_offset)
+        print(gguf.tensor[offset:next_offset])
+
+        """
+        data = gguf.tensor[offset:next_offset]
+        print(" ".join(f"{byte:02x}".replace("0", "_") for byte in data))
+        """
     else:
         match args.action:
             case "print-contents":
