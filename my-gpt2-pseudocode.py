@@ -1,14 +1,12 @@
 # I learned a lot about the GPT-2 architecture from this blog post from January 2023.
 # https://jaykmody.com/blog/gpt-from-scratch/
 
-# This file is a Python-like pseudocode.
-# Don't assume you can run this program!
-
 # I did not use generative AI for this file.
 
 # 2026-07-07
 
 
+"""
 class GPT:
     def __init__(self):
         # Imagine we load the GPT-2 model here.
@@ -61,3 +59,22 @@ class GPT:
         # It's not super complicated than I imagined before
 
     def LayerNorm(self, x, b, g):
+"""
+
+import safetensors
+
+
+class MyGPT2:
+    def __init__(self) -> None:
+        # This is where I put the Safetensors file now.
+        path = "../gpt2/model.safetensors"
+
+        # "pt" stands for PyTorch.
+        with safetensors.safe_open(path, framework="pt") as file:
+            self._tensors = {key: file.get_tensor(key) for key in file.keys()}
+
+        print(f"\x1b[32mModel loaded!\x1b[39m {self._tensors.keys()=}")
+
+
+if __name__ == "__main__":
+    my_gpt2 = MyGPT2()
