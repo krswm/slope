@@ -69,7 +69,7 @@ import safetensors
 import torch
 
 
-DEBUG_PRINT = False
+DEBUG_PRINT = True
 
 
 def tprint(checkpoint_name: str, tensor: torch.Tensor):
@@ -171,23 +171,29 @@ class MyGPT2:
             print([z.shape for z in y.split(self._config["n_embd"], dim=1)])
             """
 
-            q, k, v = y.split(self._config["n_embd"], dim=1)
+            # q, k, v = y.split(self._config["n_embd"], dim=1)
+            q, k, v = y.chunk(3, dim=1)
             if DEBUG_PRINT:
                 tprint("q", q)
                 tprint("k", k)
                 tprint("v", v)
 
+            """
             q_heads = q.split(self._config["n_head"], dim=1)
             k_heads = k.split(self._config["n_head"], dim=1)
             v_heads = v.split(self._config["n_head"], dim=1)
+            """
+            q_heads = q.chunk(self._config["n_head"], dim=1)
+            k_heads = k.chunk(self._config["n_head"], dim=1)
+            v_heads = v.chunk(self._config["n_head"], dim=1)
             if DEBUG_PRINT:
                 print("q_heads", len(q_heads))
                 print("k_heads", len(k_heads))
                 print("v_heads", len(v_heads))
 
             heads = [
-                self._attention(q, k, v, len(ids))
-                for q, k, v in zip(q_heads, k_heads, v_heads)
+                self._attention(q_, k_, v_, len(ids))
+                for q_, k_, v_ in zip(q_heads, k_heads, v_heads)
             ]
 
             y = torch.hstack(heads)
@@ -214,8 +220,11 @@ class MyGPT2:
             y += self._tensors[f"h.{i}.mlp.c_fc.bias"]
             tprint("Q", y)
 
+            """
             gelu = torch.nn.GELU()
             y = gelu(y)
+            """
+            y = 0.5 * y * (1.0 + ((2.0 / 3.141592)**0.5 * (y + 0.044715 * y**3)).tanh())
             tprint("R", y)
 
             y @= self._tensors[f"h.{i}.mlp.c_proj.weight"]
@@ -236,7 +245,7 @@ class MyGPT2:
         )
         tprint("U", x)
 
-        x @= self._tensors["wte.weight"].T
+        x @= self._tensors["wte.weight"].transpose(0, 1)
         tprint("V", x)
 
         return x
@@ -257,7 +266,11 @@ class MyGPT2:
 
         y += (torch.ones(len_ids, len_ids) * -1e12).triu(diagonal=1)
 
-        y = y.softmax(1)
+        # y = y.softmax(1)
+        # softmax with the max trick
+        e = (y - torch.amax(y, -1, keepdims=True)).exp()
+        y = e / e.sum(-1, keepdims=True)
+
         # tprint("J", y)
 
         y @= v
@@ -277,10 +290,11 @@ class MyGPT2:
 
         return weight * (y - y.mean(-1, keepdim=True)) / (y.var(-1, keepdim=True) + 1e-5).sqrt() + bias
 
-
     def generate(self, ids: list[int]) -> list[int]:
         for _ in range(10):
-            next_id = int(self.gpt(ids)[-1].argmax())
+            a = self.gpt(ids)
+            print([(a[i].argmax(), self._id_to_token[int(a[i].argmax())]) for i in range(len(ids))])
+            next_id = int(a[-1].argmax())
             print(next_id, type(next_id))
             ids.append(next_id)
 
