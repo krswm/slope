@@ -124,8 +124,12 @@ class MyGPT2:
         x += self._tensors["wpe.weight"][: len(ids), :]
         tprint("B", x)
 
+        #### Layers ####
+
         for i in range(self._config["n_layer"]):
             print(f"\x1b[32mLayer #{i}\x1b[39m")
+
+            #### Attention ####
 
             ln_1 = torch.nn.LayerNorm(self._config["n_embd"])
             ln_1.weight = torch.nn.Parameter(
@@ -172,6 +176,17 @@ class MyGPT2:
             y @= v
             tprint("K", y)
 
+            y @= self._tensors[f"h.{i}.attn.c_proj.weight"]
+            tprint("L", y)
+
+            y += self._tensors[f"h.{i}.attn.c_proj.bias"]
+            tprint("M", y)
+
+            x += y
+            tprint("N", x)
+
+            #### Feed Forward ####
+
             ln_2 = torch.nn.LayerNorm(self._config["n_embd"])
             ln_2.weight = torch.nn.Parameter(
                 self._tensors[f"h.{i}.ln_2.weight"]
@@ -181,11 +196,26 @@ class MyGPT2:
             )
             print("ln_2", ln_2)
 
-            y = ln_2(y)
-            tprint("L", y)
+            y = ln_2(x)
+            tprint("O", y)
+
+            y @= self._tensors[f"h.{i}.mlp.c_fc.weight"]
+            tprint("P", y)
+
+            y += self._tensors[f"h.{i}.mlp.c_fc.bias"]
+            tprint("Q", y)
+
+            gelu = torch.nn.GELU()
+            y = gelu(y)
+            tprint("R", y)
+
+            y @= self._tensors[f"h.{i}.mlp.c_proj.weight"]
+            tprint("S", y)
+
+            y += self._tensors[f"h.{i}.mlp.c_proj.bias"]
+            tprint("T", y)
 
             x += y
-            tprint("M", x)
 
 
 if __name__ == "__main__":
