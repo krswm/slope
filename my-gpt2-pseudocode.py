@@ -108,7 +108,9 @@ class MyGPT2:
     def gpt(self, ids: list[int]) -> torch.Tensor:
         print(f"\x1b[32mInput\x1b[39m {ids=}")
 
-        #### Embedding ####
+        #### Input Embedding ####
+
+        print(f"\x1b[32mInput embedding\x1b[39m")
 
         x = self._tensors["wte.weight"][ids]
         tprint("A", x)
@@ -216,6 +218,25 @@ class MyGPT2:
             tprint("T", y)
 
             x += y
+
+        #### Output embedding ####
+
+        print(f"\x1b[32mOutput embedding\x1b[39m")
+
+        ln_f = torch.nn.LayerNorm(self._config["n_embd"])
+        ln_f.weight = torch.nn.Parameter(self._tensors["ln_f.weight"])
+        ln_f.bias = torch.nn.Parameter(self._tensors["ln_f.bias"])
+        print("ln_f", ln_f)
+
+        x = ln_f(x)
+        tprint("U", x)
+
+        x @= self._tensors["wte.weight"].T
+        tprint("V", x)
+
+        return x
+
+        # Done. Kind of.
 
 
 if __name__ == "__main__":
