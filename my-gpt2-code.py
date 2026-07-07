@@ -261,8 +261,9 @@ class MyGPT2:
         y @= k.T
         # tprint("H", y)
 
-        y /= math.sqrt(len_ids)
+        y /= q.shape[-1]**0.5
         # tprint("I", y)
+        ## Yes! Now my code generates the same as the original!
 
         y += (torch.ones(len_ids, len_ids) * -1e12).triu(diagonal=1)
 
