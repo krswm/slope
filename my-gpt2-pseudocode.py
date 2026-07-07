@@ -62,6 +62,7 @@ class GPT:
 """
 
 import json
+import pprint
 
 import safetensors
 import torch
@@ -85,7 +86,7 @@ class MyGPT2:
             self._config = json.load(file)
 
         print(f"\x1b[32mConfig loaded!\x1b[39m")
-        print(self._config)
+        pprint.pprint(self._config)
 
     def gpt(self, ids: list[int]) -> torch.Tensor:
         print(f"\x1b[32mInput\x1b[39m {ids=}")
@@ -105,6 +106,20 @@ class MyGPT2:
 
         x += self._tensors["wpe.weight"][: len(ids), :]
         print("B", x.shape)
+
+        for i in range(self._config["n_layer"]):
+            print(f"\x1b[32mLayer #{i}\x1b[39m")
+
+            ln_1 = torch.nn.LayerNorm(self._config["n_embd"])
+            ln_1.weight = torch.nn.Parameter(
+                self._tensors[f"h.{i}.ln_1.weight"]
+            )
+            ln_1.bias = torch.nn.Parameter(
+                self._tensors[f"h.{i}.ln_1.bias"]
+            )
+            print("ln_1", ln_1)
+            y = ln_1(x)
+            print("C", y.shape)
 
 
 if __name__ == "__main__":
