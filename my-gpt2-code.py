@@ -69,7 +69,7 @@ import safetensors
 import torch
 
 
-DEBUG_PRINT = True
+DEBUG_PRINT = False
 
 
 def tprint(checkpoint_name: str, tensor: torch.Tensor):
@@ -124,7 +124,8 @@ class MyGPT2:
             }
 
     def gpt(self, ids: list[int]) -> torch.Tensor:
-        print(f"\x1b[32mInput\x1b[39m {ids=}")
+        if DEBUG_PRINT:
+            print(f"\x1b[32mInput\x1b[39m {ids=}")
 
         #### Input Embedding ####
 
@@ -292,22 +293,45 @@ class MyGPT2:
         return weight * (y - y.mean(-1, keepdim=True)) / (y.var(-1, keepdim=True) + 1e-5).sqrt() + bias
 
     def generate(self, ids: list[int]) -> list[int]:
-        for _ in range(10):
+        print(
+            "\x1b[1m" + (
+                "".join(self.replace_characters(self._id_to_token[id])
+                for id in ids)
+            ) + "\x1b[22m",
+            end="",
+            flush=True,
+        )
+    
+        for _ in range(100):
             a = self.gpt(ids)
-            print([(a[i].argmax(), self._id_to_token[int(a[i].argmax())]) for i in range(len(ids))])
+            # print([(a[i].argmax(), self._id_to_token[int(a[i].argmax())]) for i in range(len(ids))])
             next_id = int(a[-1].argmax())
-            print(next_id, type(next_id))
+            # print(next_id, type(next_id))
             ids.append(next_id)
 
+            """
             print(
                 "".join(
                     f"{id}\x1b[7m{self._id_to_token[id]}\x1b[27m"
                 for id in ids)
             )
+            """
             # Wow! At least something generated!!!
 
-        return "".join(self._id_to_token[id].replace("Ġ", " ") for id in ids)
+            print(
+                "\x1b[1;35m"
+                + self.replace_characters(self._id_to_token[next_id])
+                + "\x1b[22;39m",
+                end="",
+                flush=True,
+            )
 
+        return "".join(
+            self.replace_characters(self._id_to_token[id]) for id in ids
+        )
+
+    def replace_characters(self, text: str) -> str:
+        return text.replace("Ġ", " ").replace("Ċ", "\n")
 
 # print((torch.ones(4, 4) * -1e12).triu(diagonal=1))
 
@@ -321,4 +345,4 @@ if __name__ == "__main__":
 
     my_gpt2 = MyGPT2()
     text = my_gpt2.generate([int(id) for id in args.ids.split()])
-    print(f"\x1b[1;35m{text}\x1b[22;39m")
+    # print(f"\x1b[1;35m{text}\x1b[22;39m")
