@@ -128,6 +128,15 @@ class MyGPT2:
             y += self._tensors[f"h.{i}.attn.c_attn.bias"]
             print("E", y.shape)
 
+            """
+            print(type(y.split(3)))
+            print([z.shape for z in y.split(3)])
+            # print([z.shape for z in y.split(3, dim=1)])
+            print([z.shape for z in y.split(self._config["n_embd"], dim=1)])
+            """
+
+            q, k, v = y.split(self._config["n_embd"], dim=1)
+            print("F", q.shape, k.shape, v.shape)
 
 
 if __name__ == "__main__":
