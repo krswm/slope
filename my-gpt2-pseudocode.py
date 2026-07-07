@@ -118,8 +118,16 @@ class MyGPT2:
                 self._tensors[f"h.{i}.ln_1.bias"]
             )
             print("ln_1", ln_1)
+
             y = ln_1(x)
             print("C", y.shape)
+
+            y @= self._tensors[f"h.{i}.attn.c_attn.weight"]
+            print("D", y.shape)
+
+            y += self._tensors[f"h.{i}.attn.c_attn.bias"]
+            print("E", y.shape)
+
 
 
 if __name__ == "__main__":
