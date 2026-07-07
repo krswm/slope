@@ -48,5 +48,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     // JSON part done!
 
+    let mut byte_buffer: Vec<u8> = Vec::new();
+    file.read_to_end(&mut byte_buffer)?;
+    println!("{}", byte_buffer.len());
+
     Ok(())
 }
