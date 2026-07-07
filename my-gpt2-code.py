@@ -115,7 +115,7 @@ class MyGPT2:
         # that doesn't contain any model information.
 
         with open(vocab_path) as file:
-            self.id_to_token = {
+            self._id_to_token = {
                 id: token for token, id in json.load(file).items()
             }
 
@@ -257,6 +257,13 @@ class MyGPT2:
             next_id = int(self.gpt(ids)[-1].argmax())
             print(next_id, type(next_id))
             ids.append(next_id)
+
+            print(
+                "".join(
+                    f"{id}\x1b[7m{self._id_to_token[id]}\x1b[27m"
+                for id in ids)
+            )
+            # Wow! At least something generated!!!
 
 
 if __name__ == "__main__":
