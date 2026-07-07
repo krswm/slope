@@ -69,7 +69,7 @@ import safetensors
 import torch
 
 
-DEBUG_PRINT = True
+DEBUG_PRINT = False
 
 
 def tprint(checkpoint_name: str, tensor: torch.Tensor):
@@ -153,17 +153,9 @@ class MyGPT2:
 
             #### Attention ####
 
-            ln_1 = torch.nn.LayerNorm(self._config["n_embd"])
-            ln_1.weight = torch.nn.Parameter(
-                self._tensors[f"h.{i}.ln_1.weight"]
+            y = self.LayerNorm(
+                x, self._tensors[f"h.{i}.ln_1.weight"], self._tensors[f"h.{i}.ln_1.bias"]
             )
-            ln_1.bias = torch.nn.Parameter(
-                self._tensors[f"h.{i}.ln_1.bias"]
-            )
-            if DEBUG_PRINT:
-                print("ln_1", ln_1)
-
-            y = ln_1(x)
             tprint("C", y)
 
             y @= self._tensors[f"h.{i}.attn.c_attn.weight"]
@@ -211,17 +203,9 @@ class MyGPT2:
 
             #### Feed Forward ####
 
-            ln_2 = torch.nn.LayerNorm(self._config["n_embd"])
-            ln_2.weight = torch.nn.Parameter(
-                self._tensors[f"h.{i}.ln_2.weight"]
+            y = self.LayerNorm(
+                x, self._tensors[f"h.{i}.ln_2.weight"], self._tensors[f"h.{i}.ln_2.bias"]
             )
-            ln_2.bias = torch.nn.Parameter(
-                self._tensors[f"h.{i}.ln_2.bias"]
-            )
-            if DEBUG_PRINT:
-                print("ln_2", ln_2)
-
-            y = ln_2(x)
             tprint("O", y)
 
             y @= self._tensors[f"h.{i}.mlp.c_fc.weight"]
@@ -247,13 +231,9 @@ class MyGPT2:
         if DEBUG_PRINT:
             print(f"\x1b[32mOutput embedding\x1b[39m")
 
-        ln_f = torch.nn.LayerNorm(self._config["n_embd"])
-        ln_f.weight = torch.nn.Parameter(self._tensors["ln_f.weight"])
-        ln_f.bias = torch.nn.Parameter(self._tensors["ln_f.bias"])
-        if DEBUG_PRINT:
-            print("ln_f", ln_f)
-
-        x = ln_f(x)
+        x = self.LayerNorm(
+            x, self._tensors["ln_f.weight"], self._tensors["ln_f.bias"]
+        )
         tprint("U", x)
 
         x @= self._tensors["wte.weight"].T
@@ -277,7 +257,7 @@ class MyGPT2:
 
         y += (torch.ones(len_ids, len_ids) * -1e12).triu(diagonal=1)
 
-        y = y.softmax(0)
+        y = y.softmax(1)
         # tprint("J", y)
 
         y @= v
@@ -285,9 +265,21 @@ class MyGPT2:
 
         return y
 
+    def LayerNorm(self, y: torch.Tensor, weight: torch.Tensor, bias: torch.Tensor) -> torch.Tensor:
+        """
+        ln = torch.nn.LayerNorm(self._config["n_embd"])
+        ln.weight = torch.nn.Parameter(weight)
+        ln.bias = torch.nn.Parameter(bias)
+        if DEBUG_PRINT:
+            print("ln", ln)
+        return ln(y)
+        """
+
+        return weight * (y - y.mean(-1, keepdim=True)) / (y.var(-1, keepdim=True) + 1e-5).sqrt() + bias
+
 
     def generate(self, ids: list[int]) -> list[int]:
-        for _ in range(1):
+        for _ in range(10):
             next_id = int(self.gpt(ids)[-1].argmax())
             print(next_id, type(next_id))
             ids.append(next_id)
