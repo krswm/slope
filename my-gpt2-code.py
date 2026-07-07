@@ -71,8 +71,14 @@ import torch
 
 def tprint(checkpoint_name: str, tensor: torch.Tensor):
     """Tensor print"""
-    print(f"\x1b[36m{checkpoint_name} {tensor.shape}\x1b[39m")
+
+    """
+    print(
+        f"\x1b[36m{checkpoint_name} {tensor.shape} "
+        f"min:{tensor.min():f} max:{tensor.max():f}\x1b[39m"
+    )
     print(tensor)
+    """
 
 
 class MyGPT2:
@@ -80,20 +86,23 @@ class MyGPT2:
         # This is where I put the model files for GPT-2 now.
         safetensors_path = "../gpt2/model.safetensors"
         config_path = "../gpt2/config.json"
+        vocab_path = "../gpt2/vocab.json"
 
         # "pt" stands for PyTorch.
         with safetensors.safe_open(safetensors_path, framework="pt") as file:
             self._tensors = {key: file.get_tensor(key) for key in file.keys()}
 
         print(f"\x1b[32mTensors loaded!\x1b[39m")
+        """
         for key, tensor in self._tensors.items():
             print(f"{key:32}{tensor.shape}")
+        """
 
         with open(config_path) as file:
             self._config = json.load(file)
 
         print(f"\x1b[32mConfig loaded!\x1b[39m")
-        pprint.pprint(self._config)
+        # pprint.pprint(self._config)
 
         # Maybe this is causal mask?
         # print(self._tensors["h.0.attn.bias"])
@@ -105,12 +114,17 @@ class MyGPT2:
         # because it is just a simple triangular matrix
         # that doesn't contain any model information.
 
+        with open(vocab_path) as file:
+            self.id_to_token = {
+                id: token for token, id in json.load(file).items()
+            }
+
     def gpt(self, ids: list[int]) -> torch.Tensor:
         print(f"\x1b[32mInput\x1b[39m {ids=}")
 
         #### Input Embedding ####
 
-        print(f"\x1b[32mInput embedding\x1b[39m")
+        # print(f"\x1b[32mInput embedding\x1b[39m")
 
         x = self._tensors["wte.weight"][ids]
         tprint("A", x)
@@ -129,7 +143,7 @@ class MyGPT2:
         #### Layers ####
 
         for i in range(self._config["n_layer"]):
-            print(f"\x1b[32mLayer #{i}\x1b[39m")
+            # print(f"\x1b[32mLayer #{i}\x1b[39m")
 
             #### Attention ####
 
@@ -140,7 +154,7 @@ class MyGPT2:
             ln_1.bias = torch.nn.Parameter(
                 self._tensors[f"h.{i}.ln_1.bias"]
             )
-            print("ln_1", ln_1)
+            # print("ln_1", ln_1)
 
             y = ln_1(x)
             tprint("C", y)
@@ -159,7 +173,7 @@ class MyGPT2:
             """
 
             q, k, v = y.split(self._config["n_embd"], dim=1)
-            print("F", q.shape, k.shape, v.shape)
+            # print("F", q.shape, k.shape, v.shape)
 
             y = q
             tprint("G", y)
@@ -196,7 +210,7 @@ class MyGPT2:
             ln_2.bias = torch.nn.Parameter(
                 self._tensors[f"h.{i}.ln_2.bias"]
             )
-            print("ln_2", ln_2)
+            # print("ln_2", ln_2)
 
             y = ln_2(x)
             tprint("O", y)
@@ -221,12 +235,12 @@ class MyGPT2:
 
         #### Output embedding ####
 
-        print(f"\x1b[32mOutput embedding\x1b[39m")
+        # print(f"\x1b[32mOutput embedding\x1b[39m")
 
         ln_f = torch.nn.LayerNorm(self._config["n_embd"])
         ln_f.weight = torch.nn.Parameter(self._tensors["ln_f.weight"])
         ln_f.bias = torch.nn.Parameter(self._tensors["ln_f.bias"])
-        print("ln_f", ln_f)
+        # print("ln_f", ln_f)
 
         x = ln_f(x)
         tprint("U", x)
@@ -238,7 +252,13 @@ class MyGPT2:
 
         # Done. Kind of.
 
+    def generate(self, ids: list[int]) -> list[int]:
+        for _ in range(20):
+            next_id = int(self.gpt(ids)[-1].argmax())
+            print(next_id, type(next_id))
+            ids.append(next_id)
+
 
 if __name__ == "__main__":
     my_gpt2 = MyGPT2()
-    my_gpt2.gpt([1234, 5678])
+    print(my_gpt2.generate([1234, 5678, 123, 456, 789]))
