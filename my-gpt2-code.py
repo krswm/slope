@@ -275,7 +275,7 @@ class MyGPT2:
         y /= math.sqrt(len_ids)
         # tprint("I", y)
 
-        y += (torch.ones(len_ids, len_ids) * -1e-12).triu(diagonal=1)
+        y += (torch.ones(len_ids, len_ids) * -1e12).triu(diagonal=1)
 
         y = y.softmax(0)
         # tprint("J", y)
@@ -300,6 +300,9 @@ class MyGPT2:
             # Wow! At least something generated!!!
 
         return "".join(self._id_to_token[id].replace("Ġ", " ") for id in ids)
+
+
+# print((torch.ones(4, 4) * -1e12).triu(diagonal=1))
 
 
 if __name__ == "__main__":
