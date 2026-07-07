@@ -62,6 +62,7 @@ class GPT:
 """
 
 import safetensors
+import torch
 
 
 class MyGPT2:
@@ -73,8 +74,30 @@ class MyGPT2:
         with safetensors.safe_open(path, framework="pt") as file:
             self._tensors = {key: file.get_tensor(key) for key in file.keys()}
 
-        print(f"\x1b[32mModel loaded!\x1b[39m {self._tensors.keys()=}")
+        print(f"\x1b[32mModel loaded!\x1b[39m")
+        for key, tensor in self._tensors.items():
+            print(f"{key:32}{tensor.shape}")
+
+    def gpt(self, ids: list[int]) -> torch.Tensor:
+        print(f"\x1b[32mInput\x1b[39m {ids=}")
+
+        #### Embedding ####
+
+        x = self._tensors["wte.weight"][ids]
+        print("A", x.shape)
+
+        """
+        assert(
+            repr(self._tensors["wpe.weight"][:len(ids), :])
+            == 
+            repr(self._tensors["wpe.weight"][list(range(len(ids)))])
+        )
+        """
+
+        x += self._tensors["wpe.weight"][: len(ids), :]
+        print("B", x.shape)
 
 
 if __name__ == "__main__":
     my_gpt2 = MyGPT2()
+    my_gpt2.gpt([1234, 5678])
