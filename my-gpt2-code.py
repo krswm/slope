@@ -265,7 +265,16 @@ class MyGPT2:
             )
             # Wow! At least something generated!!!
 
+        return "".join(self._id_to_token[id].replace("Ġ", " ") for id in ids)
+
 
 if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("ids", type=str)
+    args = parser.parse_args()
+
     my_gpt2 = MyGPT2()
-    print(my_gpt2.generate([1234, 5678, 123, 456, 789]))
+    text = my_gpt2.generate([int(id) for id in args.ids.split()])
+    print(f"\x1b[1;35m{text}\x1b[22;39m")
