@@ -61,22 +61,31 @@ class GPT:
     def LayerNorm(self, x, b, g):
 """
 
+import json
+
 import safetensors
 import torch
 
 
 class MyGPT2:
     def __init__(self) -> None:
-        # This is where I put the Safetensors file now.
-        path = "../gpt2/model.safetensors"
+        # This is where I put the model files for GPT-2 now.
+        safetensors_path = "../gpt2/model.safetensors"
+        config_path = "../gpt2/config.json"
 
         # "pt" stands for PyTorch.
-        with safetensors.safe_open(path, framework="pt") as file:
+        with safetensors.safe_open(safetensors_path, framework="pt") as file:
             self._tensors = {key: file.get_tensor(key) for key in file.keys()}
 
-        print(f"\x1b[32mModel loaded!\x1b[39m")
+        print(f"\x1b[32mTensors loaded!\x1b[39m")
         for key, tensor in self._tensors.items():
             print(f"{key:32}{tensor.shape}")
+
+        with open(config_path) as file:
+            self._config = json.load(file)
+
+        print(f"\x1b[32mConfig loaded!\x1b[39m")
+        print(self._config)
 
     def gpt(self, ids: list[int]) -> torch.Tensor:
         print(f"\x1b[32mInput\x1b[39m {ids=}")
