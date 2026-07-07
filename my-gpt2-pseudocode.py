@@ -62,10 +62,17 @@ class GPT:
 """
 
 import json
+import math
 import pprint
 
 import safetensors
 import torch
+
+
+def tprint(checkpoint_name: str, tensor: torch.Tensor):
+    """Tensor print"""
+    print(f"\x1b[36m{checkpoint_name} {tensor.shape}\x1b[39m")
+    print(tensor)
 
 
 class MyGPT2:
@@ -88,13 +95,23 @@ class MyGPT2:
         print(f"\x1b[32mConfig loaded!\x1b[39m")
         pprint.pprint(self._config)
 
+        # Maybe this is causal mask?
+        # print(self._tensors["h.0.attn.bias"])
+        # Yes as I suspected!
+        # But this matrix is 1 for unmasked and 0 for masked
+        # not 0 for unmasked and -inf for masked
+        # Maybe I have to use to multiply instead of adding?
+        # At least I can ignore h.i.attn.bias
+        # because it is just a simple triangular matrix
+        # that doesn't contain any model information.
+
     def gpt(self, ids: list[int]) -> torch.Tensor:
         print(f"\x1b[32mInput\x1b[39m {ids=}")
 
         #### Embedding ####
 
         x = self._tensors["wte.weight"][ids]
-        print("A", x.shape)
+        tprint("A", x)
 
         """
         assert(
@@ -105,7 +122,7 @@ class MyGPT2:
         """
 
         x += self._tensors["wpe.weight"][: len(ids), :]
-        print("B", x.shape)
+        tprint("B", x)
 
         for i in range(self._config["n_layer"]):
             print(f"\x1b[32mLayer #{i}\x1b[39m")
@@ -120,13 +137,13 @@ class MyGPT2:
             print("ln_1", ln_1)
 
             y = ln_1(x)
-            print("C", y.shape)
+            tprint("C", y)
 
             y @= self._tensors[f"h.{i}.attn.c_attn.weight"]
-            print("D", y.shape)
+            tprint("D", y)
 
             y += self._tensors[f"h.{i}.attn.c_attn.bias"]
-            print("E", y.shape)
+            tprint("E", y)
 
             """
             print(type(y.split(3)))
@@ -137,6 +154,38 @@ class MyGPT2:
 
             q, k, v = y.split(self._config["n_embd"], dim=1)
             print("F", q.shape, k.shape, v.shape)
+
+            y = q
+            tprint("G", y)
+
+            y @= k.T
+            tprint("H", y)
+
+            y /= math.sqrt(len(ids))
+            tprint("I", y)
+
+            y += (torch.ones(len(ids), len(ids)) * -1e-12).triu(diagonal=1)
+
+            y = y.softmax(0)
+            tprint("J", y)
+
+            y @= v
+            tprint("K", y)
+
+            ln_2 = torch.nn.LayerNorm(self._config["n_embd"])
+            ln_2.weight = torch.nn.Parameter(
+                self._tensors[f"h.{i}.ln_2.weight"]
+            )
+            ln_2.bias = torch.nn.Parameter(
+                self._tensors[f"h.{i}.ln_2.bias"]
+            )
+            print("ln_2", ln_2)
+
+            y = ln_2(y)
+            tprint("L", y)
+
+            x += y
+            tprint("M", x)
 
 
 if __name__ == "__main__":
