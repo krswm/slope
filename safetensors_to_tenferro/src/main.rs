@@ -27,10 +27,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let header = json::parse(raw_header)?;
     // println!("header: {header:?}");
 
-    let mut raw_tensors = std::collections::HashMap::new();
+    let mut tensors = std::collections::HashMap::new();
 
     for (tensor_name, tensor_info) in header.entries() {
-        println!("{tensor_name}");
+        print!("{tensor_name}");
 
         let mut begin = 0usize;
         let mut end;
@@ -44,7 +44,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         for (key, value) in tensor_info.entries() {
             match key {
                 "dtype" => {
-                    println!("    dtype: {value}");
+                    print!(" dtype: {value}");
 
                     dtype = value.as_str().unwrap();
                 },
@@ -53,7 +53,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     for member in value.members() {
                         shape.push(member.as_usize().unwrap());
                     }
-                    println!("    shape: {shape:?}");
+                    print!(" shape: {shape:?}");
+
+                    // The safetensor file contains
+                    // 1D, 2D, and 4D tensors
+                    // (for GPT-2 model file).
+                    //
+                    // The 4D tensors are just 1x1x1024x1024:
+                    //
+                    // 1 0 0 0 . 0
+                    // 1 1 0 0 . 0
+                    // 1 1 1 0 . 0
+                    // 1 1 1 1 . 0
+                    // . . . . . .
+                    // 1 1 1 1 . 1
+                    //
+                    // (triangle matrix) and I don't need it
+                    // because technically it can be re-created on the fly
+                    //
+                    // So I need to get only 1D and 2D.
+                    //
+                    // 1D is shape0 (shape1 set to 0 to signify it's 1D)
+                    // 2D is shape0 x shape1
 
                     if shape.len() == 2 {
                         shape0 = *shape.get(0).unwrap();
@@ -65,25 +86,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         size = shape0;
                     }
 
-                    println!("    shape0: {shape0}, shape1: {shape1}, size: {size}");
+                    print!(" shape0: {shape0}, shape1: {shape1}, size: {size}");
                 },
                 "data_offsets" => {
                     let mut data_offsets = Vec::new();
                     for member in value.members() {
                         data_offsets.push(member.as_usize().unwrap());
                     }
-                    println!("    data_offsets: {data_offsets:?}");
+                    print!(" data_offsets: {data_offsets:?}");
 
                     begin = *data_offsets.get(0).unwrap();
                     end = *data_offsets.get(1).unwrap();
 
-                    println!("    begin: {begin}, end: {end}");
+                    print!(" begin: {begin}, end: {end}");
                 },
                 _ => {},
             }
         }
+        println!();
 
-        if dtype == "F32" {
+        if dtype == "F32" && shape0 != 0 {
             let mut raw_tensor = Vec::new();
 
             for i in 0..size {
@@ -96,10 +118,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 raw_tensor.push(f);
             }
 
-            raw_tensors.insert(tensor_name, raw_tensor);
+            let tensor = if shape1 == 0 {
+                tenferro_runtime::TypedTensor::<f32>::from_vec_col_major(vec![shape0], raw_tensor)?;  // 1D
+            } else {
+                tenferro_runtime::TypedTensor::<f32>::from_vec_col_major(vec![shape0, shape1], raw_tensor)?;  // 2D
+            };
+            // TODO: tenferro uses column major. Is my code above OK? Should I swap shape0 and shape1? Or should I transpose it?
+
+            tensors.insert(tensor_name, tensor);
         }
     }
     // JSON part done!
+
+    println!("{tensors:?}");
 
     Ok(())
 }
