@@ -95,16 +95,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // OK do it manually
     let wte_weight_shape = wte_weight.shape();
-    let wte_weight_shape1 = *wte_weight_shape.get(1).unwrap();
-    println!("{wte_weight_shape1:?}");
+    let n_ids = ids.len();
+    let n_embd = *wte_weight_shape.get(1).unwrap();  // get(1) gets the number of COLUMNS since tenferro's COLmajor
+    assert_eq!(n_embd, 768);
     let mut x_raw = Vec::new();
-    for id in &ids {
-        for i in 0..wte_weight_shape1 {
-            x_raw.push(*wte_weight.get(&[*id, i])?);
+    for i in 0..n_embd {  // COLmajor!
+        for id in &ids {
+            x_raw.push(*wte_weight.get(&[*id, i])?);  // get([ROW,COLUMN])
         }
     }
-    let x = TypedTensor::<f32>::from_vec_col_major(vec![ids.len(), wte_weight_shape1], x_raw).unwrap();
-    println!("{x:?}");
+    let x = TypedTensor::<f32>::from_vec_col_major(vec![n_ids, n_embd], x_raw).unwrap();
+
 
     Ok(())
 }

@@ -3,7 +3,7 @@
 
 use std::io::Read;
 use std::collections::HashMap;
-use tenferro_runtime::TypedTensor;
+use tenferro_runtime::{TypedTensor, TypedTensorOpsExt};
 
 pub fn st_to_tf(safetensors_path: &str) -> Result<HashMap<String, TypedTensor<f32>>, Box<dyn std::error::Error>> {
     let mut file = std::fs::File::open(safetensors_path)?;
@@ -31,7 +31,7 @@ pub fn st_to_tf(safetensors_path: &str) -> Result<HashMap<String, TypedTensor<f3
     let mut tensors = HashMap::new();
 
     for (tensor_name, tensor_info) in header.entries() {
-        // print!("{tensor_name}");
+        print!("{tensor_name}");
 
         let mut begin = 0usize;
         let mut end;
@@ -54,7 +54,7 @@ pub fn st_to_tf(safetensors_path: &str) -> Result<HashMap<String, TypedTensor<f3
                     for member in value.members() {
                         shape.push(member.as_usize().unwrap());
                     }
-                    // print!(" shape: {shape:?}");
+                    print!(" shape: {shape:?}");
 
                     // The safetensor file contains
                     // 1D, 2D, and 4D tensors
@@ -104,29 +104,97 @@ pub fn st_to_tf(safetensors_path: &str) -> Result<HashMap<String, TypedTensor<f3
                 _ => {},
             }
         }
-        // println!();
+        println!();
 
         if dtype == "F32" && shape0 != 0 {
-            let mut raw_tensor = Vec::new();
+            if shape1 == 0 {  // 1D
+                let mut raw_tensor = Vec::new();
 
-            for i in 0..size {
-                // F32 is 4 bytes long.
-                let b = begin + 4 * i;
-                let e = b + 4;
+                for i in 0..size {
+                    // F32 is 4 bytes long.
+                    let b = begin + 4 * i;
+                    let e = b + 4;
 
-                let f = f32::from_le_bytes(*byte_buffer[b..e].as_array::<4>().unwrap());
+                    let f = f32::from_le_bytes(*byte_buffer[b..e].as_array::<4>().unwrap());
 
-                raw_tensor.push(f);
+                    raw_tensor.push(f);
+                }
+
+                let tensor: TypedTensor<f32> = TypedTensor::<f32>::from_vec_col_major(vec![shape0], raw_tensor)?;  // 1D
+            } else {  // 2D
+                // Safetensors is ROW-major
+                // source: https://github.com/safetensors/safetensors#format
+                //
+                // 1 2 3
+                // 4 5 6
+
+                // tenferro is COLUMN-major
+                // source: https://tensor4all.org/tenferro-rs/getting-started/pytorch-jax-mapping.html#column-major-storage
+                //
+                // 1 3 5
+                // 2 4 6
+
+                // Suppose We have a matrix
+                //
+                // a b c
+                // d e f
+                //
+                // shape_0 = 2  (num of rows)
+                // shape_1 = 3  (num of columns)
+
+                // It is stored in Safetensors file as
+                //
+                // a b c d e f 
+
+                let mut raw_tensor = Vec::new();
+
+                for i in 0..size {
+                    // F32 is 4 bytes long.
+                    let b = begin + 4 * i;
+                    let e = b + 4;
+
+                    let f = f32::from_le_bytes(*byte_buffer[b..e].as_array::<4>().unwrap());
+
+                    raw_tensor.push(f);
+                }
+
+                // I loaded the safetensor file to raw_tensor
+                // Now raw_tensor is
+                //
+                // a b c d e f 
+
+                let tensor_direct = TypedTensor::<f32>::from_vec_col_major(vec![shape1, shape0], raw_tensor)?;  // 2D
+
+                // I directly fed raw_tensor to tenferro
+                // Now tensor_direct is
+                //
+                // a d
+                // b e
+                // c f
+                //
+                // num of rows    = 3 = shape_1
+                // num of columns = 2 = shape_0
+                //
+                // Of course it is not alright
+
+                let mut backend = tenferro_cpu::CpuBackend::new();
+                let tensor = tensor_direct.transpose(&[1, 0], &mut backend).unwrap();
+
+                assert_eq!(tensor.shape(), vec![shape0, shape1]);
+
+                // Solution: matrix transposition
+                //
+                //    T
+                // a d    a b c
+                // b e  = d e f
+                // c f
+                //
+                // Now tensor is
+                // num of rows = 2 = shape0
+                // num of cols = 3 = shape1
+
+                tensors.insert(tensor_name.to_string(), tensor);
             }
-
-            let tensor: TypedTensor<f32> = if shape1 == 0 {
-                TypedTensor::<f32>::from_vec_col_major(vec![shape0], raw_tensor)?  // 1D
-            } else {
-                TypedTensor::<f32>::from_vec_col_major(vec![shape0, shape1], raw_tensor)?  // 2D
-            };
-            // TODO: tenferro uses column major. Is my code above OK? Should I swap shape0 and shape1? Or should I transpose it?
-
-            tensors.insert(tensor_name.to_string(), tensor);
         }
     }
     // JSON part done!
