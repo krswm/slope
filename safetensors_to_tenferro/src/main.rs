@@ -17,14 +17,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let raw_header = str::from_utf8(&raw_header_buffer)?;
     // println!("raw_header: {raw_header:?}");
 
+    let mut byte_buffer: Vec<u8> = Vec::new();
+    file.read_to_end(&mut byte_buffer)?;
+    println!("{}", byte_buffer.len());
+
     // Crate json:
     // https://docs.rs/json/latest/json/index.html
 
     let header = json::parse(raw_header)?;
     // println!("header: {header:?}");
 
+    let mut raw_tensors = std::collections::HashMap::new();
+
     for (tensor_name, tensor_info) in header.entries() {
         println!("{tensor_name}");
+
+        let mut begin = 0usize;
+        let mut end = 0usize;
+
         for (key, value) in tensor_info.entries() {
             match key {
                 "dtype" => println!("    dtype: {value}"),
@@ -36,21 +46,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     println!("    shape: {shape:?}");
                 },
                 "data_offsets" => {
-                    let mut data_offsets: Vec<i32> = Vec::new();
+                    let mut data_offsets = Vec::new();
                     for member in value.members() {
-                        data_offsets.push(member.as_i32().unwrap());
+                        data_offsets.push(member.as_usize().unwrap());
                     }
                     println!("    data_offsets: {data_offsets:?}");
+
+                    begin = *data_offsets.get(0).unwrap();
+                    end = *data_offsets.get(1).unwrap();
+
+                    println!("    begin: {begin}, end: {end}");
                 },
                 _ => {},
             }
         }
+
+        raw_tensors.insert(tensor_name, &byte_buffer[begin..end]);
     }
     // JSON part done!
-
-    let mut byte_buffer: Vec<u8> = Vec::new();
-    file.read_to_end(&mut byte_buffer)?;
-    println!("{}", byte_buffer.len());
 
     Ok(())
 }
