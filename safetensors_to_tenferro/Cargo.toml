@@ -1,9 +1,0 @@
-[package]
-name = "safetensors_to_tenferro"
-version = "0.1.0"
-edition = "2024"
-
-[dependencies]
-tenferro-runtime = "0.2"
-tenferro-cpu = "0.2"
-json = "0.12.4"

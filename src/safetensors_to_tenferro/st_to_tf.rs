@@ -2,9 +2,10 @@
 // https://github.com/safetensors/safetensors
 
 use std::io::Read;
+use std::collections::HashMap;
+use tenferro_runtime::TypedTensor;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let safetensors_path = "../../gpt2/model.safetensors";
+pub fn st_to_tf(safetensors_path: &str) -> Result<HashMap<String, TypedTensor<f32>>, Box<dyn std::error::Error>> {
     let mut file = std::fs::File::open(safetensors_path)?;
 
     let mut size_of_raw_header_buffer = [0u8; 8];
@@ -27,7 +28,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let header = json::parse(raw_header)?;
     // println!("header: {header:?}");
 
-    let mut tensors = std::collections::HashMap::new();
+    let mut tensors = HashMap::new();
 
     for (tensor_name, tensor_info) in header.entries() {
         print!("{tensor_name}");
@@ -118,19 +119,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 raw_tensor.push(f);
             }
 
-            let tensor = if shape1 == 0 {
-                tenferro_runtime::TypedTensor::<f32>::from_vec_col_major(vec![shape0], raw_tensor)?;  // 1D
+            let tensor: TypedTensor<f32> = if shape1 == 0 {
+                TypedTensor::<f32>::from_vec_col_major(vec![shape0], raw_tensor)?  // 1D
             } else {
-                tenferro_runtime::TypedTensor::<f32>::from_vec_col_major(vec![shape0, shape1], raw_tensor)?;  // 2D
+                TypedTensor::<f32>::from_vec_col_major(vec![shape0, shape1], raw_tensor)?  // 2D
             };
             // TODO: tenferro uses column major. Is my code above OK? Should I swap shape0 and shape1? Or should I transpose it?
 
-            tensors.insert(tensor_name, tensor);
+            tensors.insert(tensor_name.to_string(), tensor);
         }
     }
     // JSON part done!
 
-    println!("{tensors:?}");
-
-    Ok(())
+    Ok(tensors)
 }
