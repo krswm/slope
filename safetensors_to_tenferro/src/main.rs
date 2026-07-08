@@ -33,17 +33,39 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("{tensor_name}");
 
         let mut begin = 0usize;
-        let mut end = 0usize;
+        let mut end;
+
+        let mut dtype = "";
+
+        let mut shape0 = 0usize;
+        let mut shape1 = 0usize;
+        let mut size = 0usize;
 
         for (key, value) in tensor_info.entries() {
             match key {
-                "dtype" => println!("    dtype: {value}"),
+                "dtype" => {
+                    println!("    dtype: {value}");
+
+                    dtype = value.as_str().unwrap();
+                },
                 "shape" => {
-                    let mut shape: Vec<i32> = Vec::new();
+                    let mut shape = Vec::new();
                     for member in value.members() {
-                        shape.push(member.as_i32().unwrap());
+                        shape.push(member.as_usize().unwrap());
                     }
                     println!("    shape: {shape:?}");
+
+                    if shape.len() == 2 {
+                        shape0 = *shape.get(0).unwrap();
+                        shape1 = *shape.get(1).unwrap();
+                        size = shape0 * shape1;
+                    } else if shape.len() == 1 {
+                        shape0 = *shape.get(0).unwrap();
+                        shape1 = 0usize;
+                        size = shape0;
+                    }
+
+                    println!("    shape0: {shape0}, shape1: {shape1}, size: {size}");
                 },
                 "data_offsets" => {
                     let mut data_offsets = Vec::new();
@@ -61,7 +83,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        raw_tensors.insert(tensor_name, &byte_buffer[begin..end]);
+        if dtype == "F32" {
+            let mut raw_tensor = Vec::new();
+
+            for i in 0..size {
+                // F32 is 4 bytes long.
+                let b = begin + 4 * i;
+                let e = b + 4;
+
+                let f = f32::from_le_bytes(*byte_buffer[b..e].as_array::<4>().unwrap());
+
+                raw_tensor.push(f);
+            }
+
+            raw_tensors.insert(tensor_name, raw_tensor);
+        }
     }
     // JSON part done!
 
