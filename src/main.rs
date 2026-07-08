@@ -73,12 +73,38 @@
 //     Ok(())
 // }
 
+use tenferro_runtime::TypedTensor;
+
 pub mod safetensors_to_tenferro;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let safetensors_path = "../../gpt2/model.safetensors";  // FIXME later: Don't hardcode a path! Ask for a path instead.
+    let safetensors_path = "../gpt2/model.safetensors";  // FIXME later: Don't hardcode a path! Ask for a path instead.
 
     let tensors = safetensors_to_tenferro::st_to_tf::st_to_tf(safetensors_path)?;
+
+    let ids = vec![40, 1842, 19617, 13];
+
+    // // Input embedding // //
+
+    let wte_weight: &TypedTensor<f32> = tensors.get("wte.weight").unwrap(); 
+
+    // How to extract a single row in tenferro?
+    // let x = wte_weight.get(&[2usize, :])?;
+    // println!("{x:?}");
+    // How???
+
+    // OK do it manually
+    let wte_weight_shape = wte_weight.shape();
+    let wte_weight_shape1 = *wte_weight_shape.get(1).unwrap();
+    println!("{wte_weight_shape1:?}");
+    let mut x_raw = Vec::new();
+    for id in &ids {
+        for i in 0..wte_weight_shape1 {
+            x_raw.push(*wte_weight.get(&[*id, i])?);
+        }
+    }
+    let x = TypedTensor::<f32>::from_vec_col_major(vec![ids.len(), wte_weight_shape1], x_raw).unwrap();
+    println!("{x:?}");
 
     Ok(())
 }

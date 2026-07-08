@@ -31,7 +31,7 @@ pub fn st_to_tf(safetensors_path: &str) -> Result<HashMap<String, TypedTensor<f3
     let mut tensors = HashMap::new();
 
     for (tensor_name, tensor_info) in header.entries() {
-        print!("{tensor_name}");
+        // print!("{tensor_name}");
 
         let mut begin = 0usize;
         let mut end;
@@ -45,7 +45,7 @@ pub fn st_to_tf(safetensors_path: &str) -> Result<HashMap<String, TypedTensor<f3
         for (key, value) in tensor_info.entries() {
             match key {
                 "dtype" => {
-                    print!(" dtype: {value}");
+                    // print!(" dtype: {value}");
 
                     dtype = value.as_str().unwrap();
                 },
@@ -54,7 +54,7 @@ pub fn st_to_tf(safetensors_path: &str) -> Result<HashMap<String, TypedTensor<f3
                     for member in value.members() {
                         shape.push(member.as_usize().unwrap());
                     }
-                    print!(" shape: {shape:?}");
+                    // print!(" shape: {shape:?}");
 
                     // The safetensor file contains
                     // 1D, 2D, and 4D tensors
@@ -87,24 +87,24 @@ pub fn st_to_tf(safetensors_path: &str) -> Result<HashMap<String, TypedTensor<f3
                         size = shape0;
                     }
 
-                    print!(" shape0: {shape0}, shape1: {shape1}, size: {size}");
+                    // print!(" shape0: {shape0}, shape1: {shape1}, size: {size}");
                 },
                 "data_offsets" => {
                     let mut data_offsets = Vec::new();
                     for member in value.members() {
                         data_offsets.push(member.as_usize().unwrap());
                     }
-                    print!(" data_offsets: {data_offsets:?}");
+                    // print!(" data_offsets: {data_offsets:?}");
 
                     begin = *data_offsets.get(0).unwrap();
                     end = *data_offsets.get(1).unwrap();
 
-                    print!(" begin: {begin}, end: {end}");
+                    // print!(" begin: {begin}, end: {end}");
                 },
                 _ => {},
             }
         }
-        println!();
+        // println!();
 
         if dtype == "F32" && shape0 != 0 {
             let mut raw_tensor = Vec::new();
