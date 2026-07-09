@@ -164,5 +164,35 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let xb = xa.add(&sliced_wpe_weight, &mut backend).unwrap();
     show("xb", &xb);
 
+    // Do we have mean and var in tenferro?
+    //
+    // The tenferro doc says "audit pending" for mean?
+    // https://tensor4all.org/tenferro-rs/spec/operation-categories.html#reductions 
+    //
+    // I couldn't find mean and var in tenferro rust doc
+    // https://tensor4all.org/tenferro-rs/api/tenferro_runtime/index.html
+
+    // Do it manually. Let's go! 
+    
+    /*
+    let mut raw_xb_rowwise_sum = Vec::new();
+    for row in 0..n_ids {
+        let mut sum = 0.0;
+        for col in 0..n_embd {
+            sum += *xb.get(&[row, col])?;
+        }
+        raw_xb_rowwise_sum.push(sum);
+    }
+    let xb_rowwise_sum = TypedTensor::<f32>::from_vec_col_major(vec![n_ids], raw_xb_rowwise_sum).unwrap();
+    println!("{xb_rowwise_sum:?}");
+    */
+
+    let xb_reduce_sum = xb.reduce_sum(&[1], &mut backend).unwrap();
+    println!("{xb_reduce_sum:?}");
+
+    let n_embd_tensor = TypedTensor::<f32>::from_vec_col_major(vec![1], vec![n_embd as f32]).unwrap();
+    let xb_mean = xb_reduce_sum.div(&n_embd_tensor, &mut backend).unwrap();
+    println!("{xb_mean:?}");
+
     Ok(())
 }

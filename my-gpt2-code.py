@@ -150,7 +150,7 @@ class MyGPT2:
         """
 
         x += self._tensors["wpe.weight"][: len(ids), :]
-        tprint2("B", x)
+        tprint("B", x)
 
         #### Layers ####
 
@@ -161,7 +161,7 @@ class MyGPT2:
             #### Attention ####
 
             y = self.LayerNorm(
-                x, self._tensors[f"h.{i}.ln_1.weight"], self._tensors[f"h.{i}.ln_1.bias"]
+                x, self._tensors[f"h.{i}.ln_1.weight"], self._tensors[f"h.{i}.ln_1.bias"], i == 0
             )
             tprint("C", y)
 
@@ -286,7 +286,7 @@ class MyGPT2:
 
         return y
 
-    def LayerNorm(self, y: torch.Tensor, weight: torch.Tensor, bias: torch.Tensor) -> torch.Tensor:
+    def LayerNorm(self, y: torch.Tensor, weight: torch.Tensor, bias: torch.Tensor, tprint2=False) -> torch.Tensor:
         """
         ln = torch.nn.LayerNorm(self._config["n_embd"])
         ln.weight = torch.nn.Parameter(weight)
@@ -295,6 +295,10 @@ class MyGPT2:
             print("ln", ln)
         return ln(y)
         """
+
+        if tprint2:
+            print(y.mean(-1, keepdim=True))
+            print(y.var(-1, keepdim=True))
 
         return weight * (y - y.mean(-1, keepdim=True)) / (y.var(-1, keepdim=True) + 1e-5).sqrt() + bias
 
