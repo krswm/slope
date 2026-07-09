@@ -188,11 +188,42 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     */
 
     let xb_reduce_sum = xb.reduce_sum(&[1], &mut backend).unwrap();
-    println!("{xb_reduce_sum:?}");
 
     let n_embd_tensor = TypedTensor::<f32>::from_vec_col_major(vec![1], vec![n_embd as f32]).unwrap();
     let xb_mean = xb_reduce_sum.div(&n_embd_tensor, &mut backend).unwrap();
     println!("{xb_mean:?}");
+
+    //           Sum((x_i - <x>)^2)     Sum(<x^2> - <x>^2)
+    // Var(x) = -------------------- = --------------------
+    //                   N                      N
+    //
+    // I'll use the first formula
+
+    /*
+    // https://tensor4all.org/tenferro-rs/guides/tensor-operations.html#map-iteration-and-parallelism
+    let xb_fluctuation = xb.clone();
+    for value in xb_fluctuation.iter_mut().unwrap() {
+        *value *= (*value - xb_mean) * (*value - xb_mean);
+    }
+    println!("{xb_mean:?}");
+    */
+
+    // TODO: There may be a better way...
+    let mut raw_xb_fluctuation = Vec::new();
+    for col in 0..n_embd {
+        for row in 0..n_ids {
+            let mut a = *xb.get(&[row, col]).unwrap();
+            a -= *xb_mean.get(&[row]).unwrap();
+            a *= a;
+            raw_xb_fluctuation.push(a);
+        }
+    }
+    let xb_fluctuation = TypedTensor::<f32>::from_vec_col_major(vec![n_ids, n_embd], raw_xb_fluctuation).unwrap();
+
+    let xb_fluctuation_reduced_sum = xb_fluctuation.reduce_sum(&[1], &mut backend).unwrap();
+
+    let xb_var = xb_fluctuation_reduced_sum.div(&n_embd_tensor, &mut backend).unwrap();
+    println!("{xb_var:?}");
 
     Ok(())
 }
