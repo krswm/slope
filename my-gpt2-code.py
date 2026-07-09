@@ -72,17 +72,23 @@ import torch
 DEBUG_PRINT = False
 
 
-def tprint(checkpoint_name: str, tensor: torch.Tensor):
+def tprint2(checkpoint_name: str, tensor: torch.Tensor):
     """Tensor print"""
-
-    if not DEBUG_PRINT:
-        return
 
     print(
         f"\x1b[36m{checkpoint_name} {tensor.shape} "
         f"min:{tensor.min():f} max:{tensor.max():f}\x1b[39m"
     )
     print(tensor)
+
+
+def tprint(checkpoint_name: str, tensor: torch.Tensor):
+    """Tensor print"""
+
+    if not DEBUG_PRINT:
+        return
+
+    tprint2(checkpoint_name, tensor)
 
 
 class MyGPT2:
@@ -133,7 +139,7 @@ class MyGPT2:
             print(f"\x1b[32mInput embedding\x1b[39m")
 
         x = self._tensors["wte.weight"][ids]
-        tprint("A", x)
+        tprint2("A", x)
 
         """
         assert(
@@ -341,8 +347,12 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("ids", type=str)
+    parser.add_argument("--test", action="store_true")
     args = parser.parse_args()
 
     my_gpt2 = MyGPT2()
-    text = my_gpt2.generate([int(id) for id in args.ids.split()])
-    # print(f"\x1b[1;35m{text}\x1b[22;39m")
+    if args.test:
+        my_gpt2.gpt([40, 1842, 19617, 13])
+    else:
+        text = my_gpt2.generate([int(id) for id in args.ids.split()])
+        # print(f"\x1b[1;35m{text}\x1b[22;39m")

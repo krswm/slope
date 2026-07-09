@@ -1,7 +1,7 @@
 // Specification:
 // https://github.com/safetensors/safetensors
 
-use std::io::Read;
+use std::io::{Read, Write};
 use std::collections::HashMap;
 use tenferro_runtime::{TypedTensor, TypedTensorOpsExt};
 
@@ -31,7 +31,9 @@ pub fn st_to_tf(safetensors_path: &str) -> Result<HashMap<String, TypedTensor<f3
     let mut tensors = HashMap::new();
 
     for (tensor_name, tensor_info) in header.entries() {
-        print!("{tensor_name}");
+        // print!("{tensor_name}");
+        print!("\x1b[7m \x1b[27m");
+        std::io::stdout().flush();
 
         let mut begin = 0usize;
         let mut end;
@@ -54,7 +56,7 @@ pub fn st_to_tf(safetensors_path: &str) -> Result<HashMap<String, TypedTensor<f3
                     for member in value.members() {
                         shape.push(member.as_usize().unwrap());
                     }
-                    print!(" shape: {shape:?}");
+                    // print!(" shape: {shape:?}");
 
                     // The safetensor file contains
                     // 1D, 2D, and 4D tensors
@@ -104,7 +106,7 @@ pub fn st_to_tf(safetensors_path: &str) -> Result<HashMap<String, TypedTensor<f3
                 _ => {},
             }
         }
-        println!();
+        // println!();
 
         if dtype == "F32" && shape0 != 0 {
             if shape1 == 0 {  // 1D
@@ -198,6 +200,7 @@ pub fn st_to_tf(safetensors_path: &str) -> Result<HashMap<String, TypedTensor<f3
         }
     }
     // JSON part done!
+    println!();
 
     Ok(tensors)
 }
