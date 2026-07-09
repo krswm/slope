@@ -77,6 +77,43 @@ use tenferro_runtime::TypedTensor;
 
 pub mod safetensors_to_tenferro;
 
+fn show(label: &str, tensor: &TypedTensor<f32>) {
+    // Show a tensor for debug.
+
+    let shape0 = tensor.shape().get(0).unwrap();
+    let shape1 = tensor.shape().get(1).unwrap();
+
+    let t11 = tensor.get(&[1, 1]).unwrap();
+    let t12 = tensor.get(&[1, 2]).unwrap();
+    let t18 = tensor.get(&[1, shape1 - 2]).unwrap();
+    let t19 = tensor.get(&[1, shape1 - 1]).unwrap();
+    println!("                {t11:16}{t12:16}        ........{t18:16}{t19:16} ^");
+
+    let t21 = tensor.get(&[2, 1]).unwrap();
+    let t22 = tensor.get(&[2, 2]).unwrap();
+    let t28 = tensor.get(&[2, shape1 - 2]).unwrap();
+    let t29 = tensor.get(&[2, shape1 - 1]).unwrap();
+    println!("                {t21:16}{t22:16}        ........{t28:16}{t29:16} |");
+
+    println!("{label:>13} =         ........        ........        ........        ........        ........ {shape0}");
+
+    let t81 = tensor.get(&[shape0 - 2, 1]).unwrap();
+    let t82 = tensor.get(&[shape0 - 2, 2]).unwrap();
+    let t88 = tensor.get(&[shape0 - 2, shape1 - 2]).unwrap();
+    let t89 = tensor.get(&[shape0 - 2, shape1 - 1]).unwrap();
+    println!("                {t81:16}{t82:16}        ........{t88:16}{t89:16} |");
+
+    let t91 = tensor.get(&[shape0 - 1, 1]).unwrap();
+    let t92 = tensor.get(&[shape0 - 1, 2]).unwrap();
+    let t98 = tensor.get(&[shape0 - 1, shape1 - 2]).unwrap();
+    let t99 = tensor.get(&[shape0 - 1, shape1 - 1]).unwrap();
+    println!("                {t91:16}{t92:16}        ........{t98:16}{t99:16} v");
+
+    println!("                <{} {shape1:14} {}>", "-".repeat(31), "-".repeat(31));
+
+    println!();
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let safetensors_path = "../gpt2/model.safetensors";  // FIXME later: Don't hardcode a path! Ask for a path instead.
 
@@ -105,6 +142,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     let x = TypedTensor::<f32>::from_vec_col_major(vec![n_ids, n_embd], x_raw).unwrap();
+    show("x", &x);
 
 
     Ok(())
