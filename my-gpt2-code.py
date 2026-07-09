@@ -139,7 +139,7 @@ class MyGPT2:
             print(f"\x1b[32mInput embedding\x1b[39m")
 
         x = self._tensors["wte.weight"][ids]
-        tprint2("A", x)
+        tprint("A", x)
 
         """
         assert(
@@ -150,7 +150,7 @@ class MyGPT2:
         """
 
         x += self._tensors["wpe.weight"][: len(ids), :]
-        tprint("B", x)
+        tprint2("B", x)
 
         #### Layers ####
 

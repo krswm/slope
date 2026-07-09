@@ -73,7 +73,7 @@
 //     Ok(())
 // }
 
-use tenferro_runtime::TypedTensor;
+use tenferro_runtime::{TypedTensor, TypedTensorOpsExt};
 
 pub mod safetensors_to_tenferro;
 
@@ -89,13 +89,13 @@ fn show(label: &str, tensor: &TypedTensor<f32>) {
     let t12 = tensor.get(&[0, 1]).unwrap();
     let t18 = tensor.get(&[0, shape1 - 2]).unwrap();
     let t19 = tensor.get(&[0, shape1 - 1]).unwrap();
-    println!("                {t11:16}{t12:16}        ........{t18:16}{t19:16} ^");
+    println!("                {t11:16.6}{t12:16.6}        ........{t18:16.6}{t19:16.6} ^");
 
     let t21 = tensor.get(&[1, 0]).unwrap();
     let t22 = tensor.get(&[1, 1]).unwrap();
     let t28 = tensor.get(&[1, shape1 - 2]).unwrap();
     let t29 = tensor.get(&[1, shape1 - 1]).unwrap();
-    println!("                {t21:16}{t22:16}        ........{t28:16}{t29:16} |");
+    println!("                {t21:16.6}{t22:16.6}        ........{t28:16.6}{t29:16.6} |");
 
     println!("{label:>13} =         ........        ........        ........        ........        ........ {shape0}");
 
@@ -103,13 +103,13 @@ fn show(label: &str, tensor: &TypedTensor<f32>) {
     let t82 = tensor.get(&[shape0 - 2, 1]).unwrap();
     let t88 = tensor.get(&[shape0 - 2, shape1 - 2]).unwrap();
     let t89 = tensor.get(&[shape0 - 2, shape1 - 1]).unwrap();
-    println!("                {t81:16}{t82:16}        ........{t88:16}{t89:16} |");
+    println!("                {t81:16.6}{t82:16.6}        ........{t88:16.6}{t89:16.6} |");
 
     let t91 = tensor.get(&[shape0 - 1, 0]).unwrap();
     let t92 = tensor.get(&[shape0 - 1, 1]).unwrap();
     let t98 = tensor.get(&[shape0 - 1, shape1 - 2]).unwrap();
     let t99 = tensor.get(&[shape0 - 1, shape1 - 1]).unwrap();
-    println!("                {t91:16}{t92:16}        ........{t98:16}{t99:16} v");
+    println!("                {t91:16.6}{t92:16.6}        ........{t98:16.6}{t99:16.6} v");
 
     println!("                <{} {shape1:14} {}>", "-".repeat(31), "-".repeat(31));
 
@@ -143,9 +143,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             x_raw.push(*wte_weight.get(&[*id, i])?);  // get([ROW,COLUMN])
         }
     }
-    let x = TypedTensor::<f32>::from_vec_col_major(vec![n_ids, n_embd], x_raw).unwrap();
-    show("x", &x);
+    let xa = TypedTensor::<f32>::from_vec_col_major(vec![n_ids, n_embd], x_raw).unwrap();
+    // show("xa", &xa);
 
+    let wpe_weight = tensors.get("wpe.weight").unwrap();
+    let n_ctx = *wpe_weight.shape().get(0).unwrap();
+    assert_eq!(n_ctx, 1024);
+    assert!(n_ids < n_ctx);
+
+    let mut raw_sliced_wpe_weight = Vec::new();
+    for col in 0..n_embd {
+        for row in 0..n_ids {
+            raw_sliced_wpe_weight.push(*wpe_weight.get(&[row, col])?);
+        }
+    }
+    let sliced_wpe_weight = TypedTensor::<f32>::from_vec_col_major(vec![n_ids, n_embd], raw_sliced_wpe_weight).unwrap();
+
+    let mut backend = tenferro_cpu::CpuBackend::new();
+
+    let xb = xa.add(&sliced_wpe_weight, &mut backend).unwrap();
+    show("xb", &xb);
 
     Ok(())
 }

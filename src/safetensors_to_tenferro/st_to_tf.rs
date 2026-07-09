@@ -3,7 +3,7 @@
 
 use std::io::{Read, Write};
 use std::collections::HashMap;
-use tenferro_runtime::{TypedTensor, TypedTensorOpsExt};
+use tenferro_runtime::TypedTensor;
 
 pub fn st_to_tf(safetensors_path: &str) -> Result<HashMap<String, TypedTensor<f32>>, Box<dyn std::error::Error>> {
     let mut file = std::fs::File::open(safetensors_path)?;
