@@ -61,6 +61,7 @@ class GPT:
     def LayerNorm(self, x, b, g):
 """
 
+import codecs
 import json
 import math
 import pprint
@@ -304,12 +305,13 @@ class MyGPT2:
     def generate(self, ids: list[int]) -> list[int]:
         print(
             "\x1b[1m" + (
-                "".join(self.replace_characters(self._id_to_token[id])
-                for id in ids)
+                b"".join(self.replace_characters(self._id_to_token[id]) for id in ids).decode()
             ) + "\x1b[22m",
             end="",
             flush=True,
         )
+
+        decoder = codecs.getincrementaldecoder("utf-8")()
     
         for _ in range(100):
             a = self.gpt(ids)
@@ -327,19 +329,22 @@ class MyGPT2:
             """
             # Wow! At least something generated!!!
 
+            replaced = self.replace_characters(self._id_to_token[next_id])
+            decoded = decoder.decode(input=replaced)
+
             print(
-                "\x1b[1;35m"
-                + self.replace_characters(self._id_to_token[next_id])
-                + "\x1b[22;39m",
+                f"\x1b[1;35m{decoded}\x1b[22;39m",
                 end="",
                 flush=True,
             )
 
+        """
         return "".join(
             self.replace_characters(self._id_to_token[id]) for id in ids
         )
+        """
 
-    def replace_characters(self, text: str) -> str:
+    def replace_characters(self, text: str) -> bytes:
         # return text.replace("Ġ", " ").replace("Ċ", "\n")
 
         # hex(ord("Ġ")) == 0x120
@@ -360,14 +365,14 @@ class MyGPT2:
 
         # "あ" -> "ãģĤ"
 
-        # ã = U+01E3
+        # ã = U+00E3
         # ģ = U+0123
         # Ĥ = U+0124
 
         # あ = U+3042
         # あ = 0xE3 0x81 0x82 in UTF-8
 
-        # ã = U+01E3 - 0x100 = 0xE3
+        # ã = U+00E3 - 0 = 0xE3
         # ģ = U+0123 - 0x0a2 = 0x81
         # Ĥ = U+0124 - 0x0a2 = 0x82
 
@@ -380,11 +385,7 @@ class MyGPT2:
             ]
         )
 
-        try:
-            return raw.decode()
-        except UnicodeDecodeError as error:
-            print(raw)
-            raise error
+        return raw
 
 
 # print((torch.ones(4, 4) * -1e12).triu(diagonal=1))
