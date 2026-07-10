@@ -340,7 +340,19 @@ class MyGPT2:
         )
 
     def replace_characters(self, text: str) -> str:
-        return text.replace("Ġ", " ").replace("Ċ", "\n")
+        # return text.replace("Ġ", " ").replace("Ċ", "\n")
+
+        # hex(ord("Ġ")) == 0x120
+        # hex(ord(" ")) == 0x20
+
+        # hex(ord("Ċ")) == 0x10a
+        # hex(ord("\n")) == 0xa
+
+        # plus 0x100?
+
+        return "".join(
+            (chr(ord(char) - 0x100) if ord(char) >= 0x100 else char) for char in text
+        )
 
 # print((torch.ones(4, 4) * -1e12).triu(diagonal=1))
 
