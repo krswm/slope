@@ -350,9 +350,42 @@ class MyGPT2:
 
         # plus 0x100?
 
+        # print(f"\x1b[31m{text}\x1b[39m")
+
+        """
         return "".join(
             (chr(ord(char) - 0x100) if ord(char) >= 0x100 else char) for char in text
         )
+        """
+
+        # "あ" -> "ãģĤ"
+
+        # ã = U+01E3
+        # ģ = U+0123
+        # Ĥ = U+0124
+
+        # あ = U+3042
+        # あ = 0xE3 0x81 0x82 in UTF-8
+
+        # ã = U+01E3 - 0x100 = 0xE3
+        # ģ = U+0123 - 0x0a2 = 0x81
+        # Ĥ = U+0124 - 0x0a2 = 0x82
+
+        raw = bytes(
+            [
+                ord(char) - 0xa2 if 0x122 <= ord(char) <= 0x142  # The range is just my guess!
+                else ord(char) - 0x100 if ord(char) >= 0x100
+                else ord(char)
+                for char in text
+            ]
+        )
+
+        try:
+            return raw.decode()
+        except UnicodeDecodeError as error:
+            print(raw)
+            raise error
+
 
 # print((torch.ones(4, 4) * -1e12).triu(diagonal=1))
 
