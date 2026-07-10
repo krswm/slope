@@ -92,11 +92,10 @@ def tprint(checkpoint_name: str, tensor: torch.Tensor):
 
 
 class MyGPT2:
-    def __init__(self) -> None:
-        # This is where I put the model files for GPT-2 now.
-        safetensors_path = "../gpt2/model.safetensors"
-        config_path = "../gpt2/config.json"
-        vocab_path = "../gpt2/vocab.json"
+    def __init__(self, model_path: str) -> None:
+        safetensors_path = f"{model_path}/model.safetensors"
+        config_path = f"{model_path}/config.json"
+        vocab_path = f"{model_path}/vocab.json"
 
         # "pt" stands for PyTorch.
         with safetensors.safe_open(safetensors_path, framework="pt") as file:
@@ -161,7 +160,7 @@ class MyGPT2:
             #### Attention ####
 
             y = self.LayerNorm(
-                x, self._tensors[f"h.{i}.ln_1.weight"], self._tensors[f"h.{i}.ln_1.bias"], i == 0
+                x, self._tensors[f"h.{i}.ln_1.weight"], self._tensors[f"h.{i}.ln_1.bias"], #  i == 0
             )
             tprint("C", y)
 
@@ -350,11 +349,12 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
+    parser.add_argument("model_path", type=str)
     parser.add_argument("ids", type=str)
     parser.add_argument("--test", action="store_true")
     args = parser.parse_args()
 
-    my_gpt2 = MyGPT2()
+    my_gpt2 = MyGPT2(args.model_path)
     if args.test:
         my_gpt2.gpt([40, 1842, 19617, 13])
     else:
