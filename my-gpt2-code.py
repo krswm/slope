@@ -226,7 +226,8 @@ class MyGPT2:
             	    y[:, 1 * self._config["n_embd"] + N * i:1 * self._config["n_embd"] + N * i + N],  # k,
             	    y[:, 2 * self._config["n_embd"] + N * i:2 * self._config["n_embd"] + N * i + N],  # v,
             	    len(ids),
-            	) for i in range(self._config["n_head"])
+            	    tprint=(j == 0 and i == 0),
+            	) for j in range(self._config["n_head"])
             ]
 
             y = torch.hstack(heads)
@@ -286,29 +287,45 @@ class MyGPT2:
         # Done. Kind of.
 
     def _attention(
-        self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, len_ids: int
+        self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, len_ids: int, *, tprint=False
     ) -> torch.Tensor:
+        if tprint:
+            print(q)
+            print(k)
+            print(v)
+            print(k.T)
+            print(f"{q.shape=}")
+        
         y = q
         # tprint("G", y)
 
         y @= k.T
-        # tprint("H", y)
+        if tprint:
+            tprint2("H", y)
 
         y /= q.shape[-1]**0.5
-        # tprint("I", y)
+        if tprint:
+            tprint2("I", y)
         ## Yes! Now my code generates the same as the original!
 
         y += (torch.ones(len_ids, len_ids) * -1e12).triu(diagonal=1)
+        if tprint:
+            tprint2("II", y)
 
         # y = y.softmax(1)
         # softmax with the max trick
         e = (y - torch.amax(y, -1, keepdims=True)).exp()
+        if tprint:
+            tprint2("e", e)
+        
         y = e / e.sum(-1, keepdims=True)
 
-        # tprint("J", y)
+        if tprint:
+            tprint2("J", y)
 
         y @= v
-        # tprint("K", y)
+        if tprint:
+            tprint2("K", y)
 
         return y
 

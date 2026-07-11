@@ -89,13 +89,13 @@ fn show(label: &str, tensor: &TypedTensor<f32>) {
     let t12 = tensor.get(&[0, 1]).unwrap();
     let t18 = tensor.get(&[0, shape1 - 2]).unwrap();
     let t19 = tensor.get(&[0, shape1 - 1]).unwrap();
-    println!("                        {t11:16.6}{t12:16.6}        ........{t18:16.6}{t19:16.6} ^");
+    println!("                        {t11:16.6e}{t12:16.6e}        ........{t18:16.6e}{t19:16.6e} ^");
 
     let t21 = tensor.get(&[1, 0]).unwrap();
     let t22 = tensor.get(&[1, 1]).unwrap();
     let t28 = tensor.get(&[1, shape1 - 2]).unwrap();
     let t29 = tensor.get(&[1, shape1 - 1]).unwrap();
-    println!("                        {t21:16.6}{t22:16.6}        ........{t28:16.6}{t29:16.6} |");
+    println!("                        {t21:16.6e}{t22:16.6e}        ........{t28:16.6e}{t29:16.6e} |");
 
     println!("{label:>21} =         ........        ........        ........        ........        ........ {shape0}");
 
@@ -103,13 +103,13 @@ fn show(label: &str, tensor: &TypedTensor<f32>) {
     let t82 = tensor.get(&[shape0 - 2, 1]).unwrap();
     let t88 = tensor.get(&[shape0 - 2, shape1 - 2]).unwrap();
     let t89 = tensor.get(&[shape0 - 2, shape1 - 1]).unwrap();
-    println!("                        {t81:16.6}{t82:16.6}        ........{t88:16.6}{t89:16.6} |");
+    println!("                        {t81:16.6e}{t82:16.6e}        ........{t88:16.6e}{t89:16.6e} |");
 
     let t91 = tensor.get(&[shape0 - 1, 0]).unwrap();
     let t92 = tensor.get(&[shape0 - 1, 1]).unwrap();
     let t98 = tensor.get(&[shape0 - 1, shape1 - 2]).unwrap();
     let t99 = tensor.get(&[shape0 - 1, shape1 - 1]).unwrap();
-    println!("                        {t91:16.6}{t92:16.6}        ........{t98:16.6}{t99:16.6} v");
+    println!("                        {t91:16.6e}{t92:16.6e}        ........{t98:16.6e}{t99:16.6e} v");
 
     println!("                        <{} {shape1:14} {}>", "-".repeat(31), "-".repeat(31));
 
@@ -328,13 +328,124 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut raw_q = Vec::new();
         let mut raw_k = Vec::new();
         let mut raw_v = Vec::new();
+
+        // think, it's column major, what order do i have to put them?
         for a in 0..headsize {
-            // think, it's column major, what order do i have to put them?
             for row in 0..n_ids {
                 raw_q.push(*xe.get(&[row, 0 * n_embd + headsize * i_head + a]).unwrap());
                 raw_k.push(*xe.get(&[row, 1 * n_embd + headsize * i_head + a]).unwrap());
                 raw_v.push(*xe.get(&[row, 2 * n_embd + headsize * i_head + a]).unwrap());
             }
+        }
+
+        let q = TypedTensor::<f32>::from_vec_col_major(vec![n_ids, headsize], raw_q).unwrap();
+        let k = TypedTensor::<f32>::from_vec_col_major(vec![n_ids, headsize], raw_k).unwrap();
+        let v = TypedTensor::<f32>::from_vec_col_major(vec![n_ids, headsize], raw_v).unwrap();
+
+        if i_head == 0 {
+            show("q", &q);
+            show("k", &k);
+            show("v", &v);
+        }
+
+        let kt = k.transpose(&[1, 0], &mut backend).unwrap();
+        if i_head == 0 {
+            show("kt", &kt);
+        }
+
+        let mut xi = q.matmul(&kt, &mut backend).unwrap();
+        for value in xi.iter_mut().unwrap() {
+            *value /= (headsize as f32).sqrt();
+        }
+        if i_head == 0 {
+            show("xi", &xi);
+        }
+
+        // Build a triangular matrix
+        //
+        //     0 -1e12 -1e12 ..... -1e12
+        //     0     0 -1e12 ..... -1e12
+        //     0     0     0 ..... -1e12
+        // ..... ..... ..... ..... .....
+        //     0     0     0 .....     0
+        //
+        // <causal mask matrix>
+
+        let mut raw_causal_mask = Vec::new();
+        for col in 0..n_ids {
+            for row in 0..n_ids {
+                raw_causal_mask.push(
+                    if col <= row {
+                        0.0
+                    } else {
+                        -1.0e12  // almost -inf
+                    }
+                )
+            }
+        }
+        let causal_mask = TypedTensor::<f32>::from_vec_col_major(vec![n_ids, n_ids], raw_causal_mask).unwrap();
+        if i_head == 0 {
+            show("causal_mask", &causal_mask);
+        }
+
+        let xii = xi.add(&causal_mask, &mut backend).unwrap();
+        if i_head == 0 {
+            show("xii", &xii);
+        }
+
+        /*
+        let max_xii = xii.reduce_max(&[0, 1]).unwrap();
+        if i_head == 0 {
+            println!("{max_xii}");
+        }
+
+        // reduce_max not available for TypedTensor
+        // but for TracedTensor
+        */
+        /*
+        let max_xii = xii.iter()?.fold(-1.0e12f32, |a, b| a.max(*b));
+        if i_head == 0 {
+            println!("{max_xii}");
+        }
+        */
+
+        let mut raw_max_xii = Vec::new();
+        for row in 0..n_ids {
+            let mut max = -1.0e12f32;
+            for col in 0..n_ids{
+                max = max.max(*xii.get(&[row, col])?);
+            }
+            raw_max_xii.push(max);
+        }
+        let max_xii = TypedTensor::<f32>::from_vec_col_major(vec![n_ids], raw_max_xii)?.broadcast_in_dim(&[n_ids, n_ids], &[0], &mut backend)?;
+        if i_head == 0 {
+            show("max_xii", &max_xii);
+        }
+
+        let negative_shift_xii = xii.sub(&max_xii, &mut backend)?;
+
+        if i_head == 0 {
+            show("negative_shift_xii", &negative_shift_xii);
+        }
+
+        let e = negative_shift_xii.exp(&mut backend)?;
+        if i_head == 0 {
+            show("e", &e);
+        }
+
+        let e_sum = e.reduce_sum(&[1], &mut backend)?.broadcast_in_dim(&[n_ids, n_ids], &[0], &mut backend)?;
+        if i_head == 0 {
+            show("e_sum", &e_sum);
+        }
+
+        let xj = e.div(&e_sum, &mut backend)?;
+        if i_head == 0 {
+            show("xj", &xj);
+        }
+
+        let xk = xj.matmul(&v, &mut backend)?;
+        if i_head == 0 {
+            show("xk", &xk);
         }
     }
 
