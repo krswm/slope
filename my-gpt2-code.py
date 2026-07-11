@@ -279,10 +279,10 @@ class MyGPT2:
         x = self.LayerNorm(
             x, self._tensors["ln_f.weight"], self._tensors["ln_f.bias"]
         )
-        tprint("U", x)
+        tprint2("U", x)
 
         x @= self._tensors["wte.weight"].transpose(0, 1)
-        tprint("V", x)
+        tprint2("V", x)
 
         return x
 

@@ -317,6 +317,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     show("xb after decoder stack", &xb);
 
+    let ln_f_weight = tensors.get("ln_f.weight").unwrap();  // gamma
+    let ln_f_bias = tensors.get("ln_f.bias").unwrap();  // beta
+    let xu = layer_norm(&xb, ln_f_weight, ln_f_bias, n_embd, n_ids, &mut backend);
+    show("xu", &xu);
+
+    let wte_weight_transposed = wte_weight.transpose(&[1, 0], &mut backend).unwrap();
+    let xv = xu.matmul(&wte_weight_transposed, &mut backend).unwrap();
+    show("xv", &xv);
+
+    // Yaaay!
+
     Ok(())
 }
 
