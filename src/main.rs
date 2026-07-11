@@ -164,145 +164,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let xb = xa.add(&sliced_wpe_weight, &mut backend).unwrap();
     show("xb", &xb);
 
-    // Do we have mean and var in tenferro?
-    //
-    // The tenferro doc says "audit pending" for mean?
-    // https://tensor4all.org/tenferro-rs/spec/operation-categories.html#reductions 
-    //
-    // I couldn't find mean and var in tenferro rust doc
-    // https://tensor4all.org/tenferro-rs/api/tenferro_runtime/index.html
-
-    // Do it manually. Let's go! 
-    
-    /*
-    let mut raw_xb_rowwise_sum = Vec::new();
-    for row in 0..n_ids {
-        let mut sum = 0.0;
-        for col in 0..n_embd {
-            sum += *xb.get(&[row, col])?;
-        }
-        raw_xb_rowwise_sum.push(sum);
-    }
-    let xb_rowwise_sum = TypedTensor::<f32>::from_vec_col_major(vec![n_ids], raw_xb_rowwise_sum).unwrap();
-    println!("{xb_rowwise_sum:?}");
-    */
-
-    let xb_reduce_sum = xb.reduce_sum(&[1], &mut backend).unwrap();
-
-    /*
-    let n_embd_tensor = TypedTensor::<f32>::from_vec_col_major(vec![1], vec![n_embd as f32]).unwrap();
-    let xb_mean = xb_reduce_sum.div(&n_embd_tensor, &mut backend).unwrap();
-    */
-    let mut xb_mean = xb_reduce_sum.clone();
-    for value in xb_mean.iter_mut().unwrap() {
-        *value /= n_embd as f32;
-    }
-    let xb_mean_brd = xb_mean.broadcast_in_dim(&[n_ids, n_embd], &[0], &mut backend).unwrap();
-    show("xb_mean_brd", &xb_mean_brd);
-
-    //           Sum((x_i - <x>)^2)     Sum(<x^2> - <x>^2)
-    // Var(x) = -------------------- = --------------------
-    //                   N                      N  
-    //
-    // I'll use the first formula
-    //
-    // N - 1 or N on the denominator?
-    // N - 1's result matches with my Python implementation so I guess the correct one is N - 1
-    // but where is this stated?
-    //
-    // No, My python implementation was wrong.
-    // Though I don't see the change of the final result.
-    // it may be just a subtle point that won't affect the result most of time
-    // The original paper for the layernorm uses 1/N.
-    // https://arxiv.org/pdf/1607.06450
-
-    /*
-    // https://tensor4all.org/tenferro-rs/guides/tensor-operations.html#map-iteration-and-parallelism
-    let xb_fluctuation = xb.clone();
-    for value in xb_fluctuation.iter_mut().unwrap() {
-        *value *= (*value - xb_mean) * (*value - xb_mean);
-    }
-    println!("{xb_mean:?}");
-    */
-
-    /*
-    // TODO: There may be a better way...
-    let mut raw_xb_fluctuation = Vec::new();
-    for col in 0..n_embd {
-        for row in 0..n_ids {
-            let mut a = *xb.get(&[row, col]).unwrap();
-            a -= *xb_mean.get(&[row]).unwrap();
-            a *= a;
-            raw_xb_fluctuation.push(a);
-        }
-    }
-    */
-
-    // x - <x>
-    let xb_diff = xb.sub(&xb_mean_brd, &mut backend).unwrap();
-    show("xb_diff", &xb_diff);
-
-    // (x - <x>)^2
-    let xb_fluct = xb_diff.mul(&xb_diff, &mut backend).unwrap();
-    show("xb_fluct", &xb_fluct);
-
-    // Sum(x - <x>)^2
-    let xb_fluct_sum = xb_fluct.reduce_sum(&[1], &mut backend).unwrap();
-    println!("{xb_fluct_sum:?}");
-
-    // Sum(x - <x>)^2 / N
-    let mut xb_var = xb_fluct_sum.clone();
-    for value in xb_var.iter_mut().unwrap() {
-        *value /= n_embd as f32;
-    }
-    let xb_var_brd = xb_var.broadcast_in_dim(&[n_ids, n_embd], &[0], &mut backend).unwrap();
-    show("xb_var_brd", &xb_var_brd);
-
-    /*
-    let xb_fluctuation = TypedTensor::<f32>::from_vec_col_major(vec![n_ids, n_embd], raw_xb_fluctuation).unwrap();
-
-    let xb_fluctuation_reduced_sum = xb_fluctuation.reduce_sum(&[1], &mut backend).unwrap();
-
-    let xb_var = xb_fluctuation_reduced_sum.div(&n_embd_tensor, &mut backend).unwrap();
-    println!("{xb_var:?}");
-    */
-
-    // I need
-    //
-    //     x - Mean[x]
-    // ---------------------
-    //  √(Var[x] - epsilon)
-
-    // Numerator is same as x_diff
-
-    // Var[x] - epsilon
-    const LINENORM_EPSILON: f32 = 1e-5;
-    let mut xb_purt = xb_var_brd.clone();
-    for value in xb_purt.iter_mut().unwrap() {
-        *value += LINENORM_EPSILON;
-    }
-    show("xb_purt", &xb_purt);
-
-    // √(Var[x] - epsilon)
-    let xb_denomi = xb_purt.sqrt(&mut backend).unwrap();
-    show("xb_denomi", &xb_denomi);
-
-    //     x - Mean[x]
-    // ---------------------
-    //  √(Var[x] - epsilon)
-
-    let xb_division = xb_diff.div(&xb_denomi, &mut backend).unwrap();
-    show("xb_division", &xb_division);
-
-    // LayerNorm[x] = xb_division * gamma + beta
-
     let ln_1_weight = tensors.get("h.0.ln_1.weight").unwrap();  // gamma
     let ln_1_bias = tensors.get("h.0.ln_1.bias").unwrap();  // beta
-
-    let xb_division_mul_gamma = xb_division.mul(&ln_1_weight, &mut backend).unwrap();
-    show("xb_division_mul_gamma", &xb_division_mul_gamma);
-
-    let xc = xb_division_mul_gamma.add(&ln_1_bias, &mut backend).unwrap();
+    let xc = layer_norm(&xb, ln_1_weight, ln_1_bias, n_embd, n_ids, &mut backend);
     show("xc", &xc);
 
     let attn_c_attn_weight = tensors.get("h.0.attn.c_attn.weight").unwrap();
@@ -469,5 +333,86 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let xn = xb.add(&xm, &mut backend).unwrap();
     show("xn", &xn);
 
+    let ln_2_weight = tensors.get("h.0.ln_2.weight").unwrap();  // gamma
+    let ln_2_bias = tensors.get("h.0.ln_2.bias").unwrap();  // beta
+    let xo = layer_norm(&xn, ln_2_weight, ln_2_bias, n_embd, n_ids, &mut backend);
+    show("xo", &xo);
+
     Ok(())
+}
+
+
+fn layer_norm(xb: &TypedTensor<f32>, weight: &TypedTensor<f32>, bias: &TypedTensor<f32>, n_embd: usize, n_ids: usize, backend: &mut tenferro_cpu::CpuBackend) -> TypedTensor<f32> {
+    let xb_reduce_sum = xb.reduce_sum(&[1], backend).unwrap();
+
+    let mut xb_mean = xb_reduce_sum.clone();
+    for value in xb_mean.iter_mut().unwrap() {
+        *value /= n_embd as f32;
+    }
+    let xb_mean_brd = xb_mean.broadcast_in_dim(&[n_ids, n_embd], &[0], backend).unwrap();
+    show("xb_mean_brd", &xb_mean_brd);
+
+    //           Sum((x_i - <x>)^2)     Sum(<x^2> - <x>^2)
+    // Var(x) = -------------------- = --------------------
+    //                   N                      N  
+    //
+    // I'll use the first formula
+    // The original paper for the layernorm uses 1/N.
+    // https://arxiv.org/pdf/1607.06450
+
+    // x - <x>
+    let xb_diff = xb.sub(&xb_mean_brd, backend).unwrap();
+    show("xb_diff", &xb_diff);
+
+    // (x - <x>)^2
+    let xb_fluct = xb_diff.mul(&xb_diff, backend).unwrap();
+    show("xb_fluct", &xb_fluct);
+
+    // Sum(x - <x>)^2
+    let xb_fluct_sum = xb_fluct.reduce_sum(&[1], backend).unwrap();
+    println!("{xb_fluct_sum:?}");
+
+    // Sum(x - <x>)^2 / N
+    let mut xb_var = xb_fluct_sum.clone();
+    for value in xb_var.iter_mut().unwrap() {
+        *value /= n_embd as f32;
+    }
+    let xb_var_brd = xb_var.broadcast_in_dim(&[n_ids, n_embd], &[0], backend).unwrap();
+    show("xb_var_brd", &xb_var_brd);
+
+    // I need
+    //
+    //     x - Mean[x]
+    // ---------------------
+    //  √(Var[x] - epsilon)
+
+    // Numerator is same as x_diff
+
+    // Var[x] - epsilon
+    const LINENORM_EPSILON: f32 = 1e-5;
+    let mut xb_purt = xb_var_brd.clone();
+    for value in xb_purt.iter_mut().unwrap() {
+        *value += LINENORM_EPSILON;
+    }
+    show("xb_purt", &xb_purt);
+
+    // √(Var[x] - epsilon)
+    let xb_denomi = xb_purt.sqrt(backend).unwrap();
+    show("xb_denomi", &xb_denomi);
+
+    //     x - Mean[x]
+    // ---------------------
+    //  √(Var[x] - epsilon)
+
+    let xb_division = xb_diff.div(&xb_denomi, backend).unwrap();
+    show("xb_division", &xb_division);
+
+    // LayerNorm[x] = xb_division * gamma + beta
+
+    let xb_division_mul_gamma = xb_division.mul(&weight, backend).unwrap();
+    show("xb_division_mul_gamma", &xb_division_mul_gamma);
+
+    let xc = xb_division_mul_gamma.add(&bias, backend).unwrap();
+
+    xc
 }

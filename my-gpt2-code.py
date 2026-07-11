@@ -233,23 +233,21 @@ class MyGPT2:
             # tprint2("stacked", y)
 
             y @= self._tensors[f"h.{i}.attn.c_proj.weight"]
-            if i == 0:
-                tprint2("L", y)
+            # tprint2("L", y)
 
             y += self._tensors[f"h.{i}.attn.c_proj.bias"]
-            if i == 0:
-                tprint2("M", y)
+            # tprint2("M", y)
 
             x += y
-            if i == 0:
-                tprint2("N", x)
+            # tprint2("N", x)
 
             #### Feed Forward ####
 
             y = self.LayerNorm(
                 x, self._tensors[f"h.{i}.ln_2.weight"], self._tensors[f"h.{i}.ln_2.bias"]
             )
-            tprint("O", y)
+            if i == 0:
+                tprint2("O", y)
 
             y @= self._tensors[f"h.{i}.mlp.c_fc.weight"]
             tprint("P", y)
