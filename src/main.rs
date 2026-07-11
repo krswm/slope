@@ -338,6 +338,51 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let xo = layer_norm(&xn, ln_2_weight, ln_2_bias, n_embd, n_ids, &mut backend);
     show("xo", &xo);
 
+    let mlp_c_fc_weight = tensors.get("h.0.mlp.c_fc.weight").unwrap();
+    let mlp_c_fc_bias = tensors.get("h.0.mlp.c_fc.bias").unwrap();
+
+    let xp = xo.matmul(&mlp_c_fc_weight, &mut backend).unwrap();
+    show("xp", &xp);
+
+    let xq = xp.add(&mlp_c_fc_bias, &mut backend).unwrap();
+    show("xq", &xq);
+
+    // GELU
+    // The approximation coefficients are according to the original paper that introduced Gelu:
+    // https://arxiv.org/pdf/1606.08415
+    let xq_squared = xq.mul(&xq, &mut backend).unwrap();
+    let mut xq_cubed = xq_squared.mul(&xq, &mut backend).unwrap();
+    for value in xq_cubed.iter_mut().unwrap() {
+        *value *= 0.044715;
+    }
+    let mut inside_tanh = xq.add(&xq_cubed, &mut backend).unwrap();
+    for value in inside_tanh.iter_mut().unwrap() {
+        *value *= (2.0f32 / 3.1415926535897932385f32).sqrt()
+    }
+    let mut tanhed = inside_tanh.tanh(&mut backend).unwrap();
+    for value in tanhed.iter_mut().unwrap() {
+        *value += 1.0f32;
+    }
+    let mut xr = xq.mul(&tanhed, &mut backend).unwrap();
+    for value in xr.iter_mut().unwrap() {
+        *value *= 0.5;
+    }
+    show("xr", &xr);
+
+    let mlp_c_proj_weight = tensors.get("h.0.mlp.c_proj.weight").unwrap();
+    let mlp_c_proj_bias = tensors.get("h.0.mlp.c_proj.bias").unwrap();
+
+    let xs = xr.matmul(&mlp_c_proj_weight, &mut backend).unwrap();
+    show("xs", &xs);
+
+    let xt = xs.add(&mlp_c_proj_bias, &mut backend).unwrap();
+    show("xt", &xt);
+
+    let xtt = xn.add(&xt, &mut backend).unwrap();
+    show("xtt", &xtt);
+
+    // FeedForward done!
+
     Ok(())
 }
 
