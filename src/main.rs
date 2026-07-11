@@ -118,8 +118,10 @@ fn show(label: &str, tensor: &TypedTensor<f32>) {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let safetensors_path = "../gpt2/model.safetensors";  // FIXME later: Don't hardcode a path! Ask for a path instead.
-    let vocab_path = "../gpt2/vocab.json";
+    let args: Vec<String> = std::env::args().collect();
+
+    let safetensors_path = &format!("{}/model.safetensors", &args[1]);
+    let vocab_path = &format!("{}/vocab.json", &args[1]);
 
     let vocab_raw_json = std::fs::read_to_string(vocab_path)?;
     let vocab = json::parse(&vocab_raw_json)?;
@@ -131,7 +133,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let tensors = safetensors_to_tenferro::st_to_tf::st_to_tf(safetensors_path)?;
 
-    let mut ids = vec![40, 1842, 19617, 13];
+    // looks messy...
+    let mut ids = args[2..].into_iter().map(|id| id.parse::<usize>().unwrap()).collect::<Vec<usize>>();
 
     let n_vocab = 50257;  // TODO: Don't hardcode this!
 
