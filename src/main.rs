@@ -314,6 +314,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let xe = xd.add(&attn_c_attn_bias, &mut backend).unwrap();
     show("xe", &xe);
 
+    // I need tensor.split
+    // tenferro doc says "currently missing"
+    // https://tensor4all.org/tenferro-rs/spec/operation-categories.html
+
+    // No-split workaround
+
+    // TODO: Don't hardcode them. Read from config instead.
+    let headsize = 64;  // "N"
+    let n_head = 12;
+
+    for i_head in 0..n_head {
+        let mut raw_q = Vec::new();
+        let mut raw_k = Vec::new();
+        let mut raw_v = Vec::new();
+        for a in 0..headsize {
+            // think, it's column major, what order do i have to put them?
+            for row in 0..n_ids {
+                raw_q.push(*xe.get(&[row, 0 * n_embd + headsize * i_head + a]).unwrap());
+                raw_k.push(*xe.get(&[row, 1 * n_embd + headsize * i_head + a]).unwrap());
+                raw_v.push(*xe.get(&[row, 2 * n_embd + headsize * i_head + a]).unwrap());
+            }
+        }
+    }
 
     Ok(())
 }

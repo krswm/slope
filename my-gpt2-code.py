@@ -166,12 +166,10 @@ class MyGPT2:
             tprint("C", y)
 
             y @= self._tensors[f"h.{i}.attn.c_attn.weight"]
-            if i == 0:
-                tprint2("D", y)
+            tprint("D", y)
 
             y += self._tensors[f"h.{i}.attn.c_attn.bias"]
-            if i == 0:
-                tprint2("E", y)
+            tprint("E", y)
 
             """
             print(type(y.split(3)))
@@ -180,12 +178,21 @@ class MyGPT2:
             print([z.shape for z in y.split(self._config["n_embd"], dim=1)])
             """
 
+            '''
+            # Here, y [len_ids x 3n_embd] looks like
+            #
+            # (q11 ... q1N) ... (qH1 ... qHN) (k11 ... k1N) ... (kH1 ... kHN) (v11 ... v1N) ... (vH1 ... vHN)
+            #
+            # where H = n_head, N = n_embd / n_head
+
             # q, k, v = y.split(self._config["n_embd"], dim=1)
             q, k, v = y.chunk(3, dim=1)
             if DEBUG_PRINT:
                 tprint("q", q)
                 tprint("k", k)
                 tprint("v", v)
+
+            # Here, q has (q11 ... q1N) ... (qH1 ... qHN) etc
 
             """
             q_heads = q.split(self._config["n_head"], dim=1)
@@ -200,9 +207,26 @@ class MyGPT2:
                 print("k_heads", len(k_heads))
                 print("v_heads", len(v_heads))
 
+            # Here, q_heads has [(q11 ... q1N), ..., (qH1 ... qHN)]etc
+
             heads = [
                 self._attention(q_, k_, v_, len(ids))
                 for q_, k_, v_ in zip(q_heads, k_heads, v_heads)
+            ]
+
+            # Now we have heads=[Attention1, Attention2, ..., AttentionH]
+            '''
+
+            N = self._config["n_embd"] // self._config["n_head"]
+            if i == 0:
+                print(f"{N=} {self._config["n_head"]=}")
+            heads = [
+            	self._attention(
+            	    y[:, 0 * self._config["n_embd"] + N * i:0 * self._config["n_embd"] + N * i + N],  # q,
+            	    y[:, 1 * self._config["n_embd"] + N * i:1 * self._config["n_embd"] + N * i + N],  # k,
+            	    y[:, 2 * self._config["n_embd"] + N * i:2 * self._config["n_embd"] + N * i + N],  # v,
+            	    len(ids),
+            	) for i in range(self._config["n_head"])
             ]
 
             y = torch.hstack(heads)
