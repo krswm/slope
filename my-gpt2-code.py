@@ -233,13 +233,16 @@ class MyGPT2:
             # tprint2("stacked", y)
 
             y @= self._tensors[f"h.{i}.attn.c_proj.weight"]
-            tprint("L", y)
+            if i == 0:
+                tprint2("L", y)
 
             y += self._tensors[f"h.{i}.attn.c_proj.bias"]
-            tprint("M", y)
+            if i == 0:
+                tprint2("M", y)
 
             x += y
-            tprint("N", x)
+            if i == 0:
+                tprint2("N", x)
 
             #### Feed Forward ####
 

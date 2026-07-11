@@ -457,5 +457,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let stacked = TypedTensor::<f32>::from_vec_col_major(vec![n_ids, n_embd], raw_stacked)?;
     show("stacked", &stacked);
 
+    let attn_c_proj_weight = tensors.get("h.0.attn.c_proj.weight").unwrap();
+    let attn_c_proj_bias = tensors.get("h.0.attn.c_proj.bias").unwrap();
+
+    let xl = stacked.matmul(&attn_c_proj_weight, &mut backend).unwrap();
+    show("xl", &xl);
+
+    let xm = xl.add(&attn_c_proj_bias, &mut backend).unwrap();
+    show("xm", &xm);
+
+    let xn = xb.add(&xm, &mut backend).unwrap();
+    show("xn", &xn);
+
     Ok(())
 }
