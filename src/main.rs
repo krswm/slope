@@ -73,6 +73,7 @@
 //     Ok(())
 // }
 
+use std::io::Write;
 use tenferro_runtime::{TypedTensor, TypedTensorOpsExt};
 
 pub mod safetensors_to_tenferro;
@@ -134,9 +135,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let n_vocab = 50257;  // TODO: Don't hardcode this!
 
+    for id in &ids {
+        print!("\x1b[1m{}\x1b[22m", replace_characters(id_to_token.get(&id).unwrap()));
+        std::io::stdout().flush().unwrap();
+    }
 
-    for _ in 0..5 {
-        println!("{ids:?}");
+
+    for _ in 0..1000 {
 
         let a = gpt(&tensors, &ids)?;
 
@@ -150,16 +155,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        println!("next_id: {next_id} \x1b[1;35m{}\x1b[22;39m", id_to_token.get(&next_id).unwrap());
+        print!("\x1b[1;35m{}\x1b[22;39m", replace_characters(id_to_token.get(&next_id).unwrap()));
+        std::io::stdout().flush().unwrap();
 
         ids.push(next_id);
     }
+    println!();
 
     // hooray! It works!
     // Very slow anyways
     // Needs refactoring!
 
     Ok(())
+}
+
+fn replace_characters(text: &str) -> String {
+    text.chars().map( |ch|
+        if ch as u32 >= 0x100 { char::from_u32(ch as u32 - 0x100).unwrap() } else { ch }
+    ).collect()
 }
 
 fn gpt(tensors: &std::collections::HashMap<String, TypedTensor<f32>>, ids: &Vec<usize>) -> Result<TypedTensor<f32>, Box<dyn std::error::Error>> {
