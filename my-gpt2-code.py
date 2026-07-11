@@ -216,27 +216,24 @@ class MyGPT2:
 
             # Now we have heads=[Attention1, Attention2, ..., AttentionH]
             '''
-
+            
             N = self._config["n_embd"] // self._config["n_head"]
-            if i == 0:
-                print(f"{N=} {self._config["n_head"]=}")
             heads = [
             	self._attention(
-            	    y[:, 0 * self._config["n_embd"] + N * i:0 * self._config["n_embd"] + N * i + N],  # q,
-            	    y[:, 1 * self._config["n_embd"] + N * i:1 * self._config["n_embd"] + N * i + N],  # k,
-            	    y[:, 2 * self._config["n_embd"] + N * i:2 * self._config["n_embd"] + N * i + N],  # v,
+                    # Why did I wrote `i` instead of `j` here!?!?!?
+            	    y[:, 0 * self._config["n_embd"] + N * j:0 * self._config["n_embd"] + N * j + N],  # q,
+            	    y[:, 1 * self._config["n_embd"] + N * j:1 * self._config["n_embd"] + N * j + N],  # k,
+            	    y[:, 2 * self._config["n_embd"] + N * j:2 * self._config["n_embd"] + N * j + N],  # v,
             	    len(ids),
             	    tprint=(j == 0 and i == 0),
             	) for j in range(self._config["n_head"])
             ]
 
             y = torch.hstack(heads)
-            if i == 0:
-                tprint2("stacked", y)
+            # tprint2("stacked", y)
 
             y @= self._tensors[f"h.{i}.attn.c_proj.weight"]
-            if i == 0:
-                tprint2("L", y)
+            tprint("L", y)
 
             y += self._tensors[f"h.{i}.attn.c_proj.bias"]
             tprint("M", y)
@@ -292,43 +289,30 @@ class MyGPT2:
     def _attention(
         self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, len_ids: int, *, tprint=False
     ) -> torch.Tensor:
-        if tprint:
-            print(q)
-            print(k)
-            print(v)
-            print(k.T)
-            print(f"{q.shape=}")
-        
         y = q
         # tprint("G", y)
 
         y @= k.T
-        if tprint:
-            tprint2("H", y)
+        # tprint("H", y)
 
         y /= q.shape[-1]**0.5
-        if tprint:
-            tprint2("I", y)
+        # tprint("I", y)
         ## Yes! Now my code generates the same as the original!
 
         y += (torch.ones(len_ids, len_ids) * -1e12).triu(diagonal=1)
-        if tprint:
-            tprint2("II", y)
+        # tprint("II", y)
 
         # y = y.softmax(1)
         # softmax with the max trick
         e = (y - torch.amax(y, -1, keepdims=True)).exp()
-        if tprint:
-            tprint2("e", e)
+        # tprint("e", e)
         
         y = e / e.sum(-1, keepdims=True)
 
-        if tprint:
-            tprint2("J", y)
+        # tprint("J", y)
 
         y @= v
-        if tprint:
-            tprint2("K", y)
+        # tprint("K", y)
 
         return y
 

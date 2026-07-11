@@ -445,7 +445,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         let xk = xj.matmul(&v, &mut backend)?;
-        if i_head == 0 {
+        if i_head == 0 || i_head == 1 {
             show("xk", &xk);
         }
 
@@ -456,7 +456,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let stacked = TypedTensor::<f32>::from_vec_col_major(vec![n_ids, n_embd], raw_stacked)?;
     show("stacked", &stacked);
-
 
     Ok(())
 }
