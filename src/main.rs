@@ -294,6 +294,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let xb_division = xb_diff.div(&xb_denomi, &mut backend).unwrap();
     show("xb_division", &xb_division);
 
+    // LayerNorm[x] = xb_division * gamma + beta
+
+    let ln_1_weight = tensors.get("h.0.ln_1.weight").unwrap();  // gamma
+    let ln_1_bias = tensors.get("h.0.ln_1.bias").unwrap();  // beta
+
+    let xb_division_mul_gamma = xb_division.mul(&ln_1_weight, &mut backend).unwrap();
+    show("xb_division_mul_gamma", &xb_division_mul_gamma);
+
+    let xc = xb_division_mul_gamma.add(&ln_1_bias, &mut backend).unwrap();
+    show("xc", &xc);
 
     Ok(())
 }

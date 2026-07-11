@@ -163,7 +163,8 @@ class MyGPT2:
             y = self.LayerNorm(
                 x, self._tensors[f"h.{i}.ln_1.weight"], self._tensors[f"h.{i}.ln_1.bias"], i == 0
             )
-            tprint("C", y)
+            if i == 0:
+                tprint2("C", y)
 
             y @= self._tensors[f"h.{i}.attn.c_attn.weight"]
             tprint("D", y)
