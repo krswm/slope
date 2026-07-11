@@ -161,16 +161,17 @@ class MyGPT2:
             #### Attention ####
 
             y = self.LayerNorm(
-                x, self._tensors[f"h.{i}.ln_1.weight"], self._tensors[f"h.{i}.ln_1.bias"], i == 0
+                x, self._tensors[f"h.{i}.ln_1.weight"], self._tensors[f"h.{i}.ln_1.bias"]
             )
-            if i == 0:
-                tprint2("C", y)
+            tprint("C", y)
 
             y @= self._tensors[f"h.{i}.attn.c_attn.weight"]
-            tprint("D", y)
+            if i == 0:
+                tprint2("D", y)
 
             y += self._tensors[f"h.{i}.attn.c_attn.bias"]
-            tprint("E", y)
+            if i == 0:
+                tprint2("E", y)
 
             """
             print(type(y.split(3)))

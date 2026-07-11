@@ -305,5 +305,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let xc = xb_division_mul_gamma.add(&ln_1_bias, &mut backend).unwrap();
     show("xc", &xc);
 
+    let attn_c_attn_weight = tensors.get("h.0.attn.c_attn.weight").unwrap();
+    let attn_c_attn_bias = tensors.get("h.0.attn.c_attn.bias").unwrap();
+
+    let xd = xc.matmul(&attn_c_attn_weight, &mut backend).unwrap();
+    show("xd", &xd);
+
+    let xe = xd.add(&attn_c_attn_bias, &mut backend).unwrap();
+    show("xe", &xe);
+
+
     Ok(())
 }
