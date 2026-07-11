@@ -121,8 +121,39 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let tensors = safetensors_to_tenferro::st_to_tf::st_to_tf(safetensors_path)?;
 
-    let ids = vec![40, 1842, 19617, 13];
+    let mut ids = vec![40, 1842, 19617, 13];
 
+    let n_vocab = 50257;  // TODO: Don't hardcode this!
+
+
+    for _ in 0..5 {
+        println!("{ids:?}");
+
+        let a = gpt(&tensors, &ids)?;
+
+        let mut next_id = 0;
+        let mut max = -1.0e12f32;  // I'll do greedy sampling
+        for col in 0..n_vocab {
+            let b = *a.get(&[ids.len() - 1, col])?;
+            if b > max {
+                max = b;
+                next_id = col;
+            }
+        }
+
+        println!("next_id: {next_id}");
+
+        ids.push(next_id);
+    }
+
+    // hooray! It works!
+    // Very slow anyways
+    // Needs refactoring!
+
+    Ok(())
+}
+
+fn gpt(tensors: &std::collections::HashMap<String, TypedTensor<f32>>, ids: &Vec<usize>) -> Result<TypedTensor<f32>, Box<dyn std::error::Error>> {
     // // Input embedding // //
 
     let wte_weight: &TypedTensor<f32> = tensors.get("wte.weight").unwrap(); 
@@ -139,7 +170,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(n_embd, 768);
     let mut x_raw = Vec::new();
     for i in 0..n_embd {  // COLmajor!
-        for id in &ids {
+        for id in ids {
             x_raw.push(*wte_weight.get(&[*id, i])?);  // get([ROW,COLUMN])
         }
     }
@@ -162,7 +193,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut backend = tenferro_cpu::CpuBackend::new();
 
     let mut xb = xa.add(&sliced_wpe_weight, &mut backend).unwrap();
-    show("xb", &xb);
 
     let n_layer = 12;  // TODO: Do not hardcode it!
     for i in 0..n_layer {
@@ -315,20 +345,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // FeedForward done!
     }
 
-    show("xb after decoder stack", &xb);
-
     let ln_f_weight = tensors.get("ln_f.weight").unwrap();  // gamma
     let ln_f_bias = tensors.get("ln_f.bias").unwrap();  // beta
     let xu = layer_norm(&xb, ln_f_weight, ln_f_bias, n_embd, n_ids, &mut backend);
-    show("xu", &xu);
 
     let wte_weight_transposed = wte_weight.transpose(&[1, 0], &mut backend).unwrap();
     let xv = xu.matmul(&wte_weight_transposed, &mut backend).unwrap();
-    show("xv", &xv);
 
     // Yaaay!
 
-    Ok(())
+    Ok(xv)
 }
 
 

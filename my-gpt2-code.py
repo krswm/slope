@@ -150,7 +150,7 @@ class MyGPT2:
         """
 
         x += self._tensors["wpe.weight"][: len(ids), :]
-        tprint("B", x)
+        # tprint("B", x)
 
         #### Layers ####
 
@@ -271,7 +271,7 @@ class MyGPT2:
             # tprint2("TT", x)
 
         #### Output embedding ####
-        tprint2("xb after decoder stack", x)
+        # tprint2("xb after decoder stack", x)
 
         if DEBUG_PRINT:
             print(f"\x1b[32mOutput embedding\x1b[39m")
@@ -279,10 +279,10 @@ class MyGPT2:
         x = self.LayerNorm(
             x, self._tensors["ln_f.weight"], self._tensors["ln_f.bias"]
         )
-        tprint2("U", x)
+        # tprint2("U", x)
 
         x @= self._tensors["wte.weight"].transpose(0, 1)
-        tprint2("V", x)
+        # tprint2("V", x)
 
         return x
 
@@ -380,6 +380,8 @@ class MyGPT2:
                 end="",
                 flush=True,
             )
+
+            print(f"\x1b[2m({next_id})\x1b[22m", end="", flush=True)
 
         """
         return "".join(
