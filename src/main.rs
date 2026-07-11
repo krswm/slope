@@ -118,6 +118,15 @@ fn show(label: &str, tensor: &TypedTensor<f32>) {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let safetensors_path = "../gpt2/model.safetensors";  // FIXME later: Don't hardcode a path! Ask for a path instead.
+    let vocab_path = "../gpt2/vocab.json";
+
+    let vocab_raw_json = std::fs::read_to_string(vocab_path)?;
+    let vocab = json::parse(&vocab_raw_json)?;
+
+    let mut id_to_token = std::collections::HashMap::<usize, &str>::new();
+    for (token, id) in vocab.entries() {
+        id_to_token.insert(id.as_usize().unwrap(), token);
+    }
 
     let tensors = safetensors_to_tenferro::st_to_tf::st_to_tf(safetensors_path)?;
 
@@ -141,7 +150,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        println!("next_id: {next_id}");
+        println!("next_id: {next_id} \x1b[1;35m{}\x1b[22;39m", id_to_token.get(&next_id).unwrap());
 
         ids.push(next_id);
     }
