@@ -161,7 +161,7 @@ class MyGPT2:
             #### Attention ####
 
             y = self.LayerNorm(
-                x, self._tensors[f"h.{i}.ln_1.weight"], self._tensors[f"h.{i}.ln_1.bias"], #  i == 0
+                x, self._tensors[f"h.{i}.ln_1.weight"], self._tensors[f"h.{i}.ln_1.bias"], i == 0
             )
             tprint("C", y)
 
@@ -297,10 +297,21 @@ class MyGPT2:
         """
 
         if tprint2:
+            print("xb_mean")
             print(y.mean(-1, keepdim=True))
-            print(y.var(-1, keepdim=True))
+            print("xb_diff")
+            print(y - y.mean(-1, keepdim=True))
+            print("xb_fluct")
+            print((y - y.mean(-1, keepdim=True)) ** 2.0)
+            print("xb_var")
+            print(y.var(-1, keepdim=True, correction=0.0))
+            print("xb_purt")
+            print(y.var(-1, keepdim=True, correction=0.0) + 1e-5)
+            print("xb_division")
+            print((y - y.mean(-1, keepdim=True)) / (y.var(-1, keepdim=True, correction=0.0) + 1e-5).sqrt())
 
-        return weight * (y - y.mean(-1, keepdim=True)) / (y.var(-1, keepdim=True) + 1e-5).sqrt() + bias
+
+        return weight * (y - y.mean(-1, keepdim=True)) / (y.var(-1, keepdim=True, correction=0.0) + 1e-5).sqrt() + bias
 
     def generate(self, ids: list[int]) -> list[int]:
         print(

@@ -89,29 +89,29 @@ fn show(label: &str, tensor: &TypedTensor<f32>) {
     let t12 = tensor.get(&[0, 1]).unwrap();
     let t18 = tensor.get(&[0, shape1 - 2]).unwrap();
     let t19 = tensor.get(&[0, shape1 - 1]).unwrap();
-    println!("                {t11:16.6}{t12:16.6}        ........{t18:16.6}{t19:16.6} ^");
+    println!("                        {t11:16.6}{t12:16.6}        ........{t18:16.6}{t19:16.6} ^");
 
     let t21 = tensor.get(&[1, 0]).unwrap();
     let t22 = tensor.get(&[1, 1]).unwrap();
     let t28 = tensor.get(&[1, shape1 - 2]).unwrap();
     let t29 = tensor.get(&[1, shape1 - 1]).unwrap();
-    println!("                {t21:16.6}{t22:16.6}        ........{t28:16.6}{t29:16.6} |");
+    println!("                        {t21:16.6}{t22:16.6}        ........{t28:16.6}{t29:16.6} |");
 
-    println!("{label:>13} =         ........        ........        ........        ........        ........ {shape0}");
+    println!("{label:>21} =         ........        ........        ........        ........        ........ {shape0}");
 
     let t81 = tensor.get(&[shape0 - 2, 0]).unwrap();
     let t82 = tensor.get(&[shape0 - 2, 1]).unwrap();
     let t88 = tensor.get(&[shape0 - 2, shape1 - 2]).unwrap();
     let t89 = tensor.get(&[shape0 - 2, shape1 - 1]).unwrap();
-    println!("                {t81:16.6}{t82:16.6}        ........{t88:16.6}{t89:16.6} |");
+    println!("                        {t81:16.6}{t82:16.6}        ........{t88:16.6}{t89:16.6} |");
 
     let t91 = tensor.get(&[shape0 - 1, 0]).unwrap();
     let t92 = tensor.get(&[shape0 - 1, 1]).unwrap();
     let t98 = tensor.get(&[shape0 - 1, shape1 - 2]).unwrap();
     let t99 = tensor.get(&[shape0 - 1, shape1 - 1]).unwrap();
-    println!("                {t91:16.6}{t92:16.6}        ........{t98:16.6}{t99:16.6} v");
+    println!("                        {t91:16.6}{t92:16.6}        ........{t98:16.6}{t99:16.6} v");
 
-    println!("                <{} {shape1:14} {}>", "-".repeat(31), "-".repeat(31));
+    println!("                        <{} {shape1:14} {}>", "-".repeat(31), "-".repeat(31));
 
     println!();
 }
@@ -189,15 +189,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let xb_reduce_sum = xb.reduce_sum(&[1], &mut backend).unwrap();
 
+    /*
     let n_embd_tensor = TypedTensor::<f32>::from_vec_col_major(vec![1], vec![n_embd as f32]).unwrap();
     let xb_mean = xb_reduce_sum.div(&n_embd_tensor, &mut backend).unwrap();
-    println!("{xb_mean:?}");
+    */
+    let mut xb_mean = xb_reduce_sum.clone();
+    for value in xb_mean.iter_mut().unwrap() {
+        *value /= n_embd as f32;
+    }
+    let xb_mean_brd = xb_mean.broadcast_in_dim(&[n_ids, n_embd], &[0], &mut backend).unwrap();
+    show("xb_mean_brd", &xb_mean_brd);
 
     //           Sum((x_i - <x>)^2)     Sum(<x^2> - <x>^2)
     // Var(x) = -------------------- = --------------------
-    //                   N                      N
+    //                   N                      N  
     //
     // I'll use the first formula
+    //
+    // N - 1 or N on the denominator?
+    // N - 1's result matches with my Python implementation so I guess the correct one is N - 1
+    // but where is this stated?
+    //
+    // No, My python implementation was wrong.
+    // Though I don't see the change of the final result.
+    // it may be just a subtle point that won't affect the result most of time
+    // The original paper for the layernorm uses 1/N.
+    // https://arxiv.org/pdf/1607.06450
 
     /*
     // https://tensor4all.org/tenferro-rs/guides/tensor-operations.html#map-iteration-and-parallelism
@@ -208,6 +225,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("{xb_mean:?}");
     */
 
+    /*
     // TODO: There may be a better way...
     let mut raw_xb_fluctuation = Vec::new();
     for col in 0..n_embd {
@@ -218,12 +236,64 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             raw_xb_fluctuation.push(a);
         }
     }
+    */
+
+    // x - <x>
+    let xb_diff = xb.sub(&xb_mean_brd, &mut backend).unwrap();
+    show("xb_diff", &xb_diff);
+
+    // (x - <x>)^2
+    let xb_fluct = xb_diff.mul(&xb_diff, &mut backend).unwrap();
+    show("xb_fluct", &xb_fluct);
+
+    // Sum(x - <x>)^2
+    let xb_fluct_sum = xb_fluct.reduce_sum(&[1], &mut backend).unwrap();
+    println!("{xb_fluct_sum:?}");
+
+    // Sum(x - <x>)^2 / N
+    let mut xb_var = xb_fluct_sum.clone();
+    for value in xb_var.iter_mut().unwrap() {
+        *value /= n_embd as f32;
+    }
+    let xb_var_brd = xb_var.broadcast_in_dim(&[n_ids, n_embd], &[0], &mut backend).unwrap();
+    show("xb_var_brd", &xb_var_brd);
+
+    /*
     let xb_fluctuation = TypedTensor::<f32>::from_vec_col_major(vec![n_ids, n_embd], raw_xb_fluctuation).unwrap();
 
     let xb_fluctuation_reduced_sum = xb_fluctuation.reduce_sum(&[1], &mut backend).unwrap();
 
     let xb_var = xb_fluctuation_reduced_sum.div(&n_embd_tensor, &mut backend).unwrap();
     println!("{xb_var:?}");
+    */
+
+    // I need
+    //
+    //     x - Mean[x]
+    // ---------------------
+    //  √(Var[x] - epsilon)
+
+    // Numerator is same as x_diff
+
+    // Var[x] - epsilon
+    const LINENORM_EPSILON: f32 = 1e-5;
+    let mut xb_purt = xb_var_brd.clone();
+    for value in xb_purt.iter_mut().unwrap() {
+        *value += LINENORM_EPSILON;
+    }
+    show("xb_purt", &xb_purt);
+
+    // √(Var[x] - epsilon)
+    let xb_denomi = xb_purt.sqrt(&mut backend).unwrap();
+    show("xb_denomi", &xb_denomi);
+
+    //     x - Mean[x]
+    // ---------------------
+    //  √(Var[x] - epsilon)
+
+    let xb_division = xb_diff.div(&xb_denomi, &mut backend).unwrap();
+    show("xb_division", &xb_division);
+
 
     Ok(())
 }
