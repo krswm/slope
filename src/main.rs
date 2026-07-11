@@ -324,6 +324,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let headsize = 64;  // "N"
     let n_head = 12;
 
+    let mut raw_stacked: Vec<f32> = Vec::new();
     for i_head in 0..n_head {
         let mut raw_q = Vec::new();
         let mut raw_k = Vec::new();
@@ -447,7 +448,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if i_head == 0 {
             show("xk", &xk);
         }
+
+        // I need something similar to hstack in Pytorch
+        // hstack = horizontal stack
+        // I can utilize the column majorness of tenferro!
+        raw_stacked.extend(xk.as_slice()?);
     }
+    let stacked = TypedTensor::<f32>::from_vec_col_major(vec![n_ids, n_embd], raw_stacked)?;
+    show("stacked", &stacked);
+
 
     Ok(())
 }
