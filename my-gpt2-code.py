@@ -246,38 +246,32 @@ class MyGPT2:
             y = self.LayerNorm(
                 x, self._tensors[f"h.{i}.ln_2.weight"], self._tensors[f"h.{i}.ln_2.bias"]
             )
-            if i == 0:
-                tprint2("O", y)
+            # tprint2("O", y)
 
             y @= self._tensors[f"h.{i}.mlp.c_fc.weight"]
-            if i == 0:
-                tprint2("P", y)
+            # tprint2("P", y)
 
             y += self._tensors[f"h.{i}.mlp.c_fc.bias"]
-            if i == 0:
-                tprint2("Q", y)
+            # tprint2("Q", y)
 
             """
             gelu = torch.nn.GELU()
             y = gelu(y)
             """
             y = 0.5 * y * (1.0 + ((2.0 / 3.141592)**0.5 * (y + 0.044715 * y**3)).tanh())
-            if i == 0:
-                tprint2("R", y)
+            # tprint2("R", y)
 
             y @= self._tensors[f"h.{i}.mlp.c_proj.weight"]
-            if i == 0:
-                tprint2("S", y)
+            # tprint2("S", y)
 
             y += self._tensors[f"h.{i}.mlp.c_proj.bias"]
-            if i == 0:
-                tprint2("T", y)
+            # tprint2("T", y)
 
             x += y
-            if i == 0:
-                tprint2("TT", x)
+            # tprint2("TT", x)
 
         #### Output embedding ####
+        tprint2("xb after decoder stack", x)
 
         if DEBUG_PRINT:
             print(f"\x1b[32mOutput embedding\x1b[39m")
