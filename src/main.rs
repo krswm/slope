@@ -26,6 +26,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let n_vocab = 50257; // TODO: Don't hardcode this!
 
+    /*
     for id in &ids {
         print!(
             "\x1b[1m{}\x1b[22m",
@@ -33,8 +34,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
         std::io::stdout().flush().unwrap();
     }
+    */
 
-    for _ in 0..1000 {
+    for _ in 0..1 {
         let a = transformer::transform(&tensors, &ids)?;
 
         let mut next_id = 0;

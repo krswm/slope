@@ -1,56 +1,5 @@
 use tenferro_runtime::{TypedTensor, TypedTensorOpsExt};
 
-fn show(label: &str, tensor: &TypedTensor<f32>) {
-    // Show a tensor for debug.
-
-    let shape0 = tensor.shape().get(0).unwrap();
-    let shape1 = tensor.shape().get(1).unwrap();
-
-    let t11 = tensor.get(&[0, 0]).unwrap();
-    let t12 = tensor.get(&[0, 1]).unwrap();
-    let t18 = tensor.get(&[0, shape1 - 2]).unwrap();
-    let t19 = tensor.get(&[0, shape1 - 1]).unwrap();
-    println!(
-        "                        {t11:16.6e}{t12:16.6e}        ........{t18:16.6e}{t19:16.6e} ^"
-    );
-
-    let t21 = tensor.get(&[1, 0]).unwrap();
-    let t22 = tensor.get(&[1, 1]).unwrap();
-    let t28 = tensor.get(&[1, shape1 - 2]).unwrap();
-    let t29 = tensor.get(&[1, shape1 - 1]).unwrap();
-    println!(
-        "                        {t21:16.6e}{t22:16.6e}        ........{t28:16.6e}{t29:16.6e} |"
-    );
-
-    println!(
-        "{label:>21} =         ........        ........        ........        ........        ........ {shape0}"
-    );
-
-    let t81 = tensor.get(&[shape0 - 2, 0]).unwrap();
-    let t82 = tensor.get(&[shape0 - 2, 1]).unwrap();
-    let t88 = tensor.get(&[shape0 - 2, shape1 - 2]).unwrap();
-    let t89 = tensor.get(&[shape0 - 2, shape1 - 1]).unwrap();
-    println!(
-        "                        {t81:16.6e}{t82:16.6e}        ........{t88:16.6e}{t89:16.6e} |"
-    );
-
-    let t91 = tensor.get(&[shape0 - 1, 0]).unwrap();
-    let t92 = tensor.get(&[shape0 - 1, 1]).unwrap();
-    let t98 = tensor.get(&[shape0 - 1, shape1 - 2]).unwrap();
-    let t99 = tensor.get(&[shape0 - 1, shape1 - 1]).unwrap();
-    println!(
-        "                        {t91:16.6e}{t92:16.6e}        ........{t98:16.6e}{t99:16.6e} v"
-    );
-
-    println!(
-        "                        <{} {shape1:14} {}>",
-        "-".repeat(31),
-        "-".repeat(31)
-    );
-
-    println!();
-}
-
 pub fn transform(
     tensors: &std::collections::HashMap<String, TypedTensor<f32>>,
     ids: &Vec<usize>,
@@ -249,6 +198,8 @@ pub fn transform(
     let wte_weight_transposed = wte_weight.transpose(&[1, 0], &mut backend).unwrap();
     let xv = xu.matmul(&wte_weight_transposed, &mut backend).unwrap();
 
+    show(&xv);
+
     Ok(xv)
 }
 
@@ -328,3 +279,73 @@ fn layer_norm(
 
     xc
 }
+
+/// Pretty-print a 2D tensor for debug.
+#[allow(dead_code)]
+fn show(tensor: &TypedTensor<f32>) {
+    if tensor.shape().len() != 2 {
+        println!("tensor with shape {:?}", tensor.shape());
+    }
+
+    let num_rows = tensor.shape()[0];
+    let num_cols = tensor.shape()[1];
+
+    if num_rows <= 2 {
+        for row in 0..num_rows {
+            if num_cols <= 2 {
+            }
+        }
+    } else {
+        if num_cols <= 2 {
+        }
+    }
+
+
+    let shape0 = tensor.shape()[0];
+    let shape1 = tensor.shape()[1];
+
+    let t11 = tensor.get(&[0, 0]).unwrap();
+    let t12 = tensor.get(&[0, 1]).unwrap();
+    let t18 = tensor.get(&[0, shape1 - 2]).unwrap();
+    let t19 = tensor.get(&[0, shape1 - 1]).unwrap();
+    println!(
+        "                        {t11:16.6e}{t12:16.6e}        ........{t18:16.6e}{t19:16.6e} ^"
+    );
+
+    let t21 = tensor.get(&[1, 0]).unwrap();
+    let t22 = tensor.get(&[1, 1]).unwrap();
+    let t28 = tensor.get(&[1, shape1 - 2]).unwrap();
+    let t29 = tensor.get(&[1, shape1 - 1]).unwrap();
+    println!(
+        "                        {t21:16.6e}{t22:16.6e}        ........{t28:16.6e}{t29:16.6e} |"
+    );
+
+    println!(
+        "                      ........        ........        ........        ........        ........ {shape0}"
+    );
+
+    let t81 = tensor.get(&[shape0 - 2, 0]).unwrap();
+    let t82 = tensor.get(&[shape0 - 2, 1]).unwrap();
+    let t88 = tensor.get(&[shape0 - 2, shape1 - 2]).unwrap();
+    let t89 = tensor.get(&[shape0 - 2, shape1 - 1]).unwrap();
+    println!(
+        "                        {t81:16.6e}{t82:16.6e}        ........{t88:16.6e}{t89:16.6e} |"
+    );
+
+    let t91 = tensor.get(&[shape0 - 1, 0]).unwrap();
+    let t92 = tensor.get(&[shape0 - 1, 1]).unwrap();
+    let t98 = tensor.get(&[shape0 - 1, shape1 - 2]).unwrap();
+    let t99 = tensor.get(&[shape0 - 1, shape1 - 1]).unwrap();
+    println!(
+        "                        {t91:16.6e}{t92:16.6e}        ........{t98:16.6e}{t99:16.6e} v"
+    );
+
+    println!(
+        "                        <{} {shape1:14} {}>",
+        "-".repeat(31),
+        "-".repeat(31)
+    );
+
+    println!();
+}
+
