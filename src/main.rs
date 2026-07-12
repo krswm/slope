@@ -76,7 +76,7 @@
 use std::io::Write;
 use tenferro_runtime::{TypedTensor, TypedTensorOpsExt};
 
-pub mod safetensors_to_tenferro;
+pub mod loader;
 
 fn show(label: &str, tensor: &TypedTensor<f32>) {
     // Show a tensor for debug.
@@ -131,7 +131,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         id_to_token.insert(id.as_usize().unwrap(), token);
     }
 
-    let tensors = safetensors_to_tenferro::st_to_tf::st_to_tf(safetensors_path)?;
+    let tensors = loader::st_to_tf(safetensors_path)?;
 
     // looks messy...
     let mut ids = args[2..].into_iter().map(|id| id.parse::<usize>().unwrap()).collect::<Vec<usize>>();
