@@ -55,7 +55,15 @@ pub fn transform(
         let ln_1_bias = &tensors[&format!("h.{i}.ln_1.bias")];
         assert_eq!(ln_1_bias.shape(), &[n_embd]);
 
-        let b0 = layer_norm(&a2, ln_1_weight, ln_1_bias, n_embd, n_ids, &mut backend);
+        let b0 = layer_norm(
+            &a2,
+            ln_1_weight,
+            ln_1_bias,
+            n_embd,
+            n_ids,
+            &mut backend,
+            i == 0,
+        );
 
         let attn_c_attn_weight = &tensors[&format!("h.{i}.attn.c_attn.weight")];
         assert_eq!(attn_c_attn_weight.shape(), &[n_embd, 3 * n_embd]);
@@ -95,10 +103,12 @@ pub fn transform(
 
             let kt = k.transpose(&[1, 0], &mut backend).unwrap();
 
-            let mut xi = q.matmul(&kt, &mut backend).unwrap();
-            for value in xi.iter_mut().unwrap() {
-                *value /= (headsize as f32).sqrt();
-            }
+            let headsize_sqrt_as_tensor =
+                TypedTensor::<f32>::from_vec_col_major(vec![1, 1], vec![(headsize as f32).sqrt()])?;
+
+            let xi = q.matmul(&kt, &mut backend).unwrap();
+
+            let xi_div = xi.div(&headsize_sqrt_as_tensor, &mut backend)?;
 
             // Build a triangular matrix
             //
@@ -124,7 +134,7 @@ pub fn transform(
                 TypedTensor::<f32>::from_vec_col_major(vec![n_ids, n_ids], raw_causal_mask)
                     .unwrap();
 
-            let xii = xi.add(&causal_mask, &mut backend).unwrap();
+            let xii = xi_div.add(&causal_mask, &mut backend).unwrap();
 
             let mut raw_max_xii = Vec::new();
             for row in 0..n_ids {
@@ -134,18 +144,15 @@ pub fn transform(
                 }
                 raw_max_xii.push(max);
             }
-            let max_xii = TypedTensor::<f32>::from_vec_col_major(vec![n_ids], raw_max_xii)?
-                .broadcast_in_dim(&[n_ids, n_ids], &[0], &mut backend)?;
+            let max_xii = TypedTensor::<f32>::from_vec_col_major(vec![n_ids, 1], raw_max_xii)?;
 
             let negative_shift_xii = xii.sub(&max_xii, &mut backend)?;
 
             let e = negative_shift_xii.exp(&mut backend)?;
 
-            let e_sum = e.reduce_sum(&[1], &mut backend)?.broadcast_in_dim(
-                &[n_ids, n_ids],
-                &[0],
-                &mut backend,
-            )?;
+            let e_sum = e
+                .reduce_sum(&[1], &mut backend)?
+                .reshape(&[n_ids, 1], &mut backend)?;
 
             let xj = e.div(&e_sum, &mut backend)?;
 
@@ -166,7 +173,15 @@ pub fn transform(
 
         let ln_2_weight = tensors.get(&format!("h.{i}.ln_2.weight")).unwrap(); // gamma
         let ln_2_bias = tensors.get(&format!("h.{i}.ln_2.bias")).unwrap(); // beta
-        let xo = layer_norm(&xn, ln_2_weight, ln_2_bias, n_embd, n_ids, &mut backend);
+        let xo = layer_norm(
+            &xn,
+            ln_2_weight,
+            ln_2_bias,
+            n_embd,
+            n_ids,
+            &mut backend,
+            false,
+        );
 
         let mlp_c_fc_weight = tensors.get(&format!("h.{i}.mlp.c_fc.weight")).unwrap();
         let mlp_c_fc_bias = tensors.get(&format!("h.{i}.mlp.c_fc.bias")).unwrap();
@@ -179,27 +194,27 @@ pub fn transform(
         // The approximation coefficients are according to the original paper that introduced Gelu:
         // https://arxiv.org/pdf/1606.08415
         let xq_squared = xq.mul(&xq, &mut backend).unwrap();
-        let mut xq_cubed = xq_squared.mul(&xq, &mut backend).unwrap();
-        for value in xq_cubed.iter_mut().unwrap() {
-            *value *= 0.044715;
-        }
-        let mut inside_tanh = xq.add(&xq_cubed, &mut backend).unwrap();
-        for value in inside_tanh.iter_mut().unwrap() {
-            *value *= (2.0f32 / 3.1415926535897932385f32).sqrt()
-        }
-        let mut tanhed = inside_tanh.tanh(&mut backend).unwrap();
-        for value in tanhed.iter_mut().unwrap() {
-            *value += 1.0f32;
-        }
-        let mut xr = xq.mul(&tanhed, &mut backend).unwrap();
-        for value in xr.iter_mut().unwrap() {
-            *value *= 0.5;
-        }
+        let xq_cubed = xq_squared.mul(&xq, &mut backend).unwrap();
+        let xq_cubed_coef_as_tensor =
+            TypedTensor::<f32>::from_vec_col_major(vec![1, 1], vec![0.044715])?;
+        let xq_cubed_scaled = xq_cubed.mul(&xq_cubed_coef_as_tensor, &mut backend)?;
+        let inside_tanh = xq.add(&xq_cubed_scaled, &mut backend).unwrap();
+        let inside_tanh_coef_as_tensor = TypedTensor::<f32>::from_vec_col_major(
+            vec![1, 1],
+            vec![(2.0f32 / 3.1415926535897932385f32).sqrt()],
+        )?;
+        let inside_tanh_scaled = inside_tanh.mul(&inside_tanh_coef_as_tensor, &mut backend)?;
+        let tanhed = inside_tanh_scaled.tanh(&mut backend).unwrap();
+        let one_as_tensor = TypedTensor::<f32>::from_vec_col_major(vec![1, 1], vec![1.0])?;
+        let tanhed_raised = tanhed.add(&one_as_tensor, &mut backend)?;
+        let xr = xq.mul(&tanhed_raised, &mut backend).unwrap();
+        let xr_coef_as_tensor = TypedTensor::<f32>::from_vec_col_major(vec![1, 1], vec![0.5])?;
+        let xr_scaled = xr.mul(&xr_coef_as_tensor, &mut backend)?;
 
         let mlp_c_proj_weight = tensors.get(&format!("h.{i}.mlp.c_proj.weight")).unwrap();
         let mlp_c_proj_bias = tensors.get(&format!("h.{i}.mlp.c_proj.bias")).unwrap();
 
-        let xs = xr.matmul(&mlp_c_proj_weight, &mut backend).unwrap();
+        let xs = xr_scaled.matmul(&mlp_c_proj_weight, &mut backend).unwrap();
 
         let xt = xs.add(&mlp_c_proj_bias, &mut backend).unwrap();
 
@@ -208,7 +223,15 @@ pub fn transform(
 
     let ln_f_weight = tensors.get("ln_f.weight").unwrap(); // gamma
     let ln_f_bias = tensors.get("ln_f.bias").unwrap(); // beta
-    let xu = layer_norm(&a2, ln_f_weight, ln_f_bias, n_embd, n_ids, &mut backend);
+    let xu = layer_norm(
+        &a2,
+        ln_f_weight,
+        ln_f_bias,
+        n_embd,
+        n_ids,
+        &mut backend,
+        false,
+    );
 
     let wte_weight_transposed = wte_weight.transpose(&[1, 0], &mut backend).unwrap();
     let xv = xu.matmul(&wte_weight_transposed, &mut backend).unwrap();
@@ -223,16 +246,16 @@ fn layer_norm(
     n_embd: usize,
     n_ids: usize,
     backend: &mut tenferro_cpu::CpuBackend,
+    is_show: bool,
 ) -> TypedTensor<f32> {
     let xb_reduce_sum = xb.reduce_sum(&[1], backend).unwrap();
 
-    let mut xb_mean = xb_reduce_sum.clone();
-    for value in xb_mean.iter_mut().unwrap() {
-        *value /= n_embd as f32;
-    }
-    let xb_mean_brd = xb_mean
-        .broadcast_in_dim(&[n_ids, n_embd], &[0], backend)
-        .unwrap();
+    let n_embd_as_tensor =
+        TypedTensor::<f32>::from_vec_col_major(vec![1], vec![n_embd as f32]).unwrap();
+
+    let xb_mean = xb_reduce_sum.div(&n_embd_as_tensor, backend).unwrap();
+
+    let xb_mean_brd = xb_mean.reshape(&[n_ids, 1], backend).unwrap();
 
     //           Sum((x_i - <x>)^2)     Sum(<x^2> - <x>^2)
     // Var(x) = -------------------- = --------------------
@@ -252,37 +275,34 @@ fn layer_norm(
     let xb_fluct_sum = xb_fluct.reduce_sum(&[1], backend).unwrap();
 
     // Sum(x - <x>)^2 / N
-    let mut xb_var = xb_fluct_sum.clone();
-    for value in xb_var.iter_mut().unwrap() {
-        *value /= n_embd as f32;
-    }
-    let xb_var_brd = xb_var
-        .broadcast_in_dim(&[n_ids, n_embd], &[0], backend)
-        .unwrap();
+    let xb_var = xb_fluct_sum.div(&n_embd_as_tensor, backend).unwrap();
 
     // I need
     //
     //     x - Mean[x]
     // ---------------------
-    //  √(Var[x] - epsilon)
+    //  √(Var[x] + epsilon)
 
     // Numerator is same as x_diff
 
-    // Var[x] - epsilon
+    // Var[x] + epsilon
     const LINENORM_EPSILON: f32 = 1e-5;
-    let mut xb_purt = xb_var_brd.clone();
-    for value in xb_purt.iter_mut().unwrap() {
-        *value += LINENORM_EPSILON;
-    }
+
+    let linenorm_epsilon_as_tensor =
+        TypedTensor::<f32>::from_vec_col_major(vec![1], vec![LINENORM_EPSILON]).unwrap();
+
+    let xb_purt = xb_var.add(&linenorm_epsilon_as_tensor, backend).unwrap();
 
     // √(Var[x] - epsilon)
     let xb_denomi = xb_purt.sqrt(backend).unwrap();
+
+    let xb_denomi_brd = xb_denomi.reshape(&[n_ids, 1], backend).unwrap();
 
     //     x - Mean[x]
     // ---------------------
     //  √(Var[x] - epsilon)
 
-    let xb_division = xb_diff.div(&xb_denomi, backend).unwrap();
+    let xb_division = xb_diff.div(&xb_denomi_brd, backend).unwrap();
 
     // LayerNorm[x] = xb_division * gamma + beta
 
