@@ -1,56 +1,71 @@
 use std::error::Error;
 
+use tenferro_cpu::CpuBackend;
 use tenferro_runtime::{TypedTensor, TypedTensorOpsExt};
 
 pub fn transform(
     tensors: &std::collections::HashMap<String, TypedTensor<f32>>,
+    n_ctx: usize,
+    n_embd: usize,
+    n_head: usize,
+    n_layer: usize,
+    vocab_size: usize,
     ids: &Vec<usize>,
 ) -> Result<TypedTensor<f32>, Box<dyn Error>> {
-    let wte_weight: &TypedTensor<f32> = tensors.get("wte.weight").unwrap();
+    let mut backend = CpuBackend::new();
 
-    let wte_weight_shape = wte_weight.shape();
+    // (a) Embedding
+
+    let wte_weight = &tensors["wte.weight"];
+    assert_eq!(wte_weight.shape(), &[vocab_size, n_embd]);
+
+    let a0 = {
+        let mut colmaj = Vec::with_capacity(ids.len() * n_embd);
+        for i in 0..n_embd {
+            for id in ids {
+                colmaj.push(*wte_weight.get(&[*id, i])?);
+            }
+        }
+        TypedTensor::<f32>::from_vec_col_major(vec![ids.len(), n_embd], colmaj)?
+    };
+
+    let wpe_weight = &tensors["wpe.weight"];
+    assert_eq!(wpe_weight.shape(), &[n_ctx, n_embd]);
+
+    let a1 = {
+        let mut colmaj = Vec::with_capacity(ids.len() * n_embd);
+        for col in 0..n_embd {
+            for row in 0..ids.len() {
+                colmaj.push(*wpe_weight.get(&[row, col])?);
+            }
+        }
+        TypedTensor::<f32>::from_vec_col_major(vec![ids.len(), n_embd], colmaj)?
+    };
+
+    let mut a2 = a0.add(&a1, &mut backend)?;
+
     let n_ids = ids.len();
-    let n_embd = *wte_weight_shape.get(1).unwrap(); // get(1) gets the number of COLUMNS since tenferro's COLmajor
-    assert_eq!(n_embd, 768);
-    let mut x_raw = Vec::new();
-    for i in 0..n_embd {
-        // COLmajor!
-        for id in ids {
-            x_raw.push(*wte_weight.get(&[*id, i])?); // get([ROW,COLUMN])
-        }
-    }
-    let xa = TypedTensor::<f32>::from_vec_col_major(vec![n_ids, n_embd], x_raw).unwrap();
 
-    let wpe_weight = tensors.get("wpe.weight").unwrap();
-    let n_ctx = *wpe_weight.shape().get(0).unwrap();
-    assert_eq!(n_ctx, 1024);
-    assert!(n_ids < n_ctx);
-
-    let mut raw_sliced_wpe_weight = Vec::new();
-    for col in 0..n_embd {
-        for row in 0..n_ids {
-            raw_sliced_wpe_weight.push(*wpe_weight.get(&[row, col])?);
-        }
-    }
-    let sliced_wpe_weight =
-        TypedTensor::<f32>::from_vec_col_major(vec![n_ids, n_embd], raw_sliced_wpe_weight).unwrap();
-
-    let mut backend = tenferro_cpu::CpuBackend::new();
-
-    let mut xb = xa.add(&sliced_wpe_weight, &mut backend).unwrap();
-
-    let n_layer = 12; // TODO: Do not hardcode it!
     for i in 0..n_layer {
-        let ln_1_weight = tensors.get(&format!("h.{i}.ln_1.weight")).unwrap(); // gamma
-        let ln_1_bias = tensors.get(&format!("h.{i}.ln_1.bias")).unwrap(); // beta
-        let xc = layer_norm(&xb, ln_1_weight, ln_1_bias, n_embd, n_ids, &mut backend);
+        // (b) Multi-Head Attention
 
-        let attn_c_attn_weight = tensors.get(&format!("h.{i}.attn.c_attn.weight")).unwrap();
-        let attn_c_attn_bias = tensors.get(&format!("h.{i}.attn.c_attn.bias")).unwrap();
+        let ln_1_weight = &tensors[&format!("h.{i}.ln_1.weight")];
+        assert_eq!(ln_1_weight.shape(), &[n_embd]);
 
-        let xd = xc.matmul(&attn_c_attn_weight, &mut backend).unwrap();
+        let ln_1_bias = &tensors[&format!("h.{i}.ln_1.bias")];
+        assert_eq!(ln_1_bias.shape(), &[n_embd]);
 
-        let xe = xd.add(&attn_c_attn_bias, &mut backend).unwrap();
+        let b0 = layer_norm(&a2, ln_1_weight, ln_1_bias, n_embd, n_ids, &mut backend);
+
+        let attn_c_attn_weight = &tensors[&format!("h.{i}.attn.c_attn.weight")];
+        assert_eq!(attn_c_attn_weight.shape(), &[n_embd, 3 * n_embd]);
+
+        let b1 = b0.matmul(&attn_c_attn_weight, &mut backend)?;
+
+        let attn_c_attn_bias = &tensors[&format!("h.{i}.attn.c_attn.bias")];
+        assert_eq!(attn_c_attn_bias.shape(), &[3 * n_embd]);
+
+        let b2 = b1.add(&attn_c_attn_bias, &mut backend)?;
 
         // I need tensor.split
         // tenferro doc says "currently missing"
@@ -58,9 +73,7 @@ pub fn transform(
 
         // No-split workaround
 
-        // TODO: Don't hardcode them. Read from config instead.
-        let headsize = 64; // "N"
-        let n_head = 12;
+        let headsize = n_embd / n_head; // "N"
 
         let mut raw_stacked: Vec<f32> = Vec::new();
         for i_head in 0..n_head {
@@ -70,9 +83,9 @@ pub fn transform(
 
             for a in 0..headsize {
                 for row in 0..n_ids {
-                    raw_q.push(*xe.get(&[row, 0 * n_embd + headsize * i_head + a]).unwrap());
-                    raw_k.push(*xe.get(&[row, 1 * n_embd + headsize * i_head + a]).unwrap());
-                    raw_v.push(*xe.get(&[row, 2 * n_embd + headsize * i_head + a]).unwrap());
+                    raw_q.push(*b2.get(&[row, 0 * n_embd + headsize * i_head + a]).unwrap());
+                    raw_k.push(*b2.get(&[row, 1 * n_embd + headsize * i_head + a]).unwrap());
+                    raw_v.push(*b2.get(&[row, 2 * n_embd + headsize * i_head + a]).unwrap());
                 }
             }
 
@@ -149,7 +162,7 @@ pub fn transform(
 
         let xm = xl.add(&attn_c_proj_bias, &mut backend).unwrap();
 
-        let xn = xb.add(&xm, &mut backend).unwrap();
+        let xn = a2.add(&xm, &mut backend).unwrap();
 
         let ln_2_weight = tensors.get(&format!("h.{i}.ln_2.weight")).unwrap(); // gamma
         let ln_2_bias = tensors.get(&format!("h.{i}.ln_2.bias")).unwrap(); // beta
@@ -190,17 +203,15 @@ pub fn transform(
 
         let xt = xs.add(&mlp_c_proj_bias, &mut backend).unwrap();
 
-        xb = xn.add(&xt, &mut backend).unwrap();
+        a2 = xn.add(&xt, &mut backend).unwrap();
     }
 
     let ln_f_weight = tensors.get("ln_f.weight").unwrap(); // gamma
     let ln_f_bias = tensors.get("ln_f.bias").unwrap(); // beta
-    let xu = layer_norm(&xb, ln_f_weight, ln_f_bias, n_embd, n_ids, &mut backend);
+    let xu = layer_norm(&a2, ln_f_weight, ln_f_bias, n_embd, n_ids, &mut backend);
 
     let wte_weight_transposed = wte_weight.transpose(&[1, 0], &mut backend).unwrap();
     let xv = xu.matmul(&wte_weight_transposed, &mut backend).unwrap();
-
-    show(&xv)?;
 
     Ok(xv)
 }

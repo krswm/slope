@@ -1,4 +1,8 @@
-use std::io::Write;
+use std::collections::HashMap;
+use std::fs::File;
+use std::io::{BufReader, Write};
+
+use serde_json::Value;
 
 pub mod loader;
 pub mod transformer;
@@ -8,6 +12,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let safetensors_path = &format!("{}/model.safetensors", &args[1]);
     let vocab_path = &format!("{}/vocab.json", &args[1]);
+    let config_path = &format!("{}/config.json", &args[1]);
 
     let vocab_raw_json = std::fs::read_to_string(vocab_path)?;
     let vocab = json::parse(&vocab_raw_json)?;
@@ -16,6 +21,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for (token, id) in vocab.entries() {
         id_to_token.insert(id.as_usize().unwrap(), token);
     }
+
+    let (n_ctx, n_embd, n_head, n_layer, vocab_size) = {
+        let file = File::open(config_path)?;
+        let reader = BufReader::new(file);
+        let config: HashMap<String, Value> = serde_json::from_reader(reader)?;
+        (
+            config["n_ctx"].as_u64().unwrap() as usize,
+            config["n_embd"].as_u64().unwrap() as usize,
+            config["n_head"].as_u64().unwrap() as usize,
+            config["n_layer"].as_u64().unwrap() as usize,
+            config["vocab_size"].as_u64().unwrap() as usize,
+        )
+    };
 
     let tensors = loader::load_safetensors(safetensors_path)?;
 
@@ -26,7 +44,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let n_vocab = 50257; // TODO: Don't hardcode this!
 
-    /*
     for id in &ids {
         print!(
             "\x1b[1m{}\x1b[22m",
@@ -34,10 +51,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
         std::io::stdout().flush().unwrap();
     }
-    */
 
-    for _ in 0..1 {
-        let a = transformer::transform(&tensors, &ids)?;
+    for _ in 0..10 {
+        let a = transformer::transform(&tensors, n_ctx, n_embd, n_head, n_layer, vocab_size, &ids)?;
 
         let mut next_id = 0;
         let mut max = -1.0e12f32; // I'll do greedy sampling
