@@ -1,9 +1,18 @@
 use std::collections::HashMap;
 use std::error::Error;
 use std::fs::File;
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::{Read, Write};
 
+use serde::Deserialize;
+use serde_json::Value;
 use tenferro_runtime::TypedTensor;
+
+#[derive(Deserialize, Debug)]
+struct TensorInfo {
+    dtype: String,
+    shape: Vec<usize>,
+    data_offsets: Vec<usize>,
+}
 
 /// Load a Safetensors file and convert the tensors into `tenferro_runtime::TypedTensor<f32>`.
 ///
@@ -19,11 +28,11 @@ pub fn load_safetensors(
         usize::from_le_bytes(buffer)
     };
 
-    let header = {
+    let header: HashMap<String, Value> = {
         let mut buffer = vec![0; size_of_header];
         file.read_exact(&mut buffer)?;
-        let raw_json = str::from_utf8(&buffer)?;
-        json::parse(raw_json)?
+        println!("{:?}", str::from_utf8(&buffer));
+        serde_json::from_slice(&buffer)?
     };
 
     let byte_buffer = {
@@ -38,52 +47,27 @@ pub fn load_safetensors(
         print!("\x1b[90mLoading Safetensors…\x1b[39m ");
         std::io::stdout().flush().unwrap();
 
-        for (tensor_name, tensor_info) in header.entries() {
+        for (tensor_name, raw_tensor_info) in header.into_iter() {
+            if tensor_name == "__metadata__" {
+                continue;
+            }
+
+            let tensor_info: TensorInfo = serde_json::from_value(raw_tensor_info)?;
+            
             print!("\x1b[100m \x1b[49m");
             std::io::stdout().flush().unwrap();
 
-            let mut begin = 0usize;
-
-            let mut dtype = "";
-
-            let mut shape0 = 0usize;
-            let mut shape1 = 0usize;
-            let mut size = 0usize;
-
-            for (key, value) in tensor_info.entries() {
-                match key {
-                    "dtype" => {
-                        dtype = value.as_str().unwrap();
-                    }
-                    "shape" => {
-                        let mut shape = Vec::new();
-                        for member in value.members() {
-                            shape.push(member.as_usize().unwrap());
-                        }
-
-                        // 1D is shape0 (shape1 set to 0 to signify it's 1D)
-                        // 2D is shape0 x shape1
-
-                        if shape.len() == 2 {
-                            shape0 = *shape.get(0).unwrap();
-                            shape1 = *shape.get(1).unwrap();
-                            size = shape0 * shape1;
-                        } else if shape.len() == 1 {
-                            shape0 = *shape.get(0).unwrap();
-                            shape1 = 0usize;
-                            size = shape0;
-                        }
-                    }
-                    "data_offsets" => {
-                        let mut data_offsets = Vec::new();
-                        for member in value.members() {
-                            data_offsets.push(member.as_usize().unwrap());
-                        }
-                        begin = *data_offsets.get(0).unwrap();
-                    }
-                    _ => {}
-                }
-            }
+            let begin = tensor_info.data_offsets[0];
+            let dtype = tensor_info.dtype;
+            let (shape0, shape1, size) = if tensor_info.shape.len() == 2 {
+                (
+                    tensor_info.shape[0],
+                    tensor_info.shape[1],
+                    tensor_info.shape[0] * tensor_info.shape[1],
+                )
+            } else {
+                (tensor_info.shape[0], 0usize, tensor_info.shape[0])
+            };
 
             if dtype == "F32" && shape0 != 0 {
                 if shape1 == 0 {
