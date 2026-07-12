@@ -1,26 +1,35 @@
-// Specification:
-// https://github.com/safetensors/safetensors
-
-use std::io::{Read, Write};
 use std::collections::HashMap;
+use std::error::Error;
+use std::fs::File;
+use std::io::{Read, Seek, SeekFrom, Write};
+
 use tenferro_runtime::TypedTensor;
 
-pub fn st_to_tf(safetensors_path: &str) -> Result<HashMap<String, TypedTensor<f32>>, Box<dyn std::error::Error>> {
-    let mut file = std::fs::File::open(safetensors_path)?;
+/// Load a Safetensors file and convert the tensors into `tenferro_runtime::TypedTensor<f32>`.
+///
+/// [Specification of the Safetensors file format](https://github.com/safetensors/safetensors#format)
+pub fn load_safetensors(
+    path_to_safetensors: &str,
+) -> Result<HashMap<String, TypedTensor<f32>>, Box<dyn Error>> {
+    let mut file = File::open(path_to_safetensors)?;
 
-    let mut size_of_raw_header_buffer = [0u8; 8];
-    file.read_exact(&mut size_of_raw_header_buffer)?;
-    let size_of_raw_header = usize::from_le_bytes(size_of_raw_header_buffer);
-    println!("size_of_raw_header: {size_of_raw_header}");
+    let size_of_header = {
+        let mut buffer = [0; 8];
+        file.read_exact(&mut buffer)?;
+        usize::from_le_bytes(buffer)
+    };
 
-    let mut raw_header_buffer = vec!(0u8; size_of_raw_header);
+    let byte_buffer = {
+        let mut buffer = Vec::new();
+        file.seek(SeekFrom::Start(8 + size_of_header as u64))?;
+        file.read_to_end(&mut buffer)?;
+        buffer
+    };
+
+    let mut raw_header_buffer = vec![0u8; size_of_header];
+    file.seek(SeekFrom::Start(8))?;
     file.read_exact(&mut raw_header_buffer)?;
     let raw_header = str::from_utf8(&raw_header_buffer)?;
-    // println!("raw_header: {raw_header:?}");
-
-    let mut byte_buffer: Vec<u8> = Vec::new();
-    file.read_to_end(&mut byte_buffer)?;
-    println!("{}", byte_buffer.len());
 
     // Crate json:
     // https://docs.rs/json/latest/json/index.html
@@ -51,7 +60,7 @@ pub fn st_to_tf(safetensors_path: &str) -> Result<HashMap<String, TypedTensor<f3
                     // print!(" dtype: {value}");
 
                     dtype = value.as_str().unwrap();
-                },
+                }
                 "shape" => {
                     let mut shape = Vec::new();
                     for member in value.members() {
@@ -91,7 +100,7 @@ pub fn st_to_tf(safetensors_path: &str) -> Result<HashMap<String, TypedTensor<f3
                     }
 
                     // print!(" shape0: {shape0}, shape1: {shape1}, size: {size}");
-                },
+                }
                 "data_offsets" => {
                     let mut data_offsets = Vec::new();
                     for member in value.members() {
@@ -100,15 +109,15 @@ pub fn st_to_tf(safetensors_path: &str) -> Result<HashMap<String, TypedTensor<f3
                     // print!(" data_offsets: {data_offsets:?}");
 
                     begin = *data_offsets.get(0).unwrap();
-
-                },
-                _ => {},
+                }
+                _ => {}
             }
         }
         // println!();
 
         if dtype == "F32" && shape0 != 0 {
-            if shape1 == 0 {  // 1D
+            if shape1 == 0 {
+                // 1D
                 let mut raw_tensor = Vec::new();
 
                 for i in 0..size {
@@ -121,10 +130,12 @@ pub fn st_to_tf(safetensors_path: &str) -> Result<HashMap<String, TypedTensor<f3
                     raw_tensor.push(f);
                 }
 
-                let tensor: TypedTensor<f32> = TypedTensor::<f32>::from_vec_col_major(vec![shape0], raw_tensor)?;  // 1D
+                let tensor: TypedTensor<f32> =
+                    TypedTensor::<f32>::from_vec_col_major(vec![shape0], raw_tensor)?; // 1D
 
                 tensors.insert(tensor_name.to_string(), tensor);
-            } else {  // 2D
+            } else {
+                // 2D
                 // Safetensors is ROW-major
                 // source: https://github.com/safetensors/safetensors#format
                 //
@@ -147,14 +158,14 @@ pub fn st_to_tf(safetensors_path: &str) -> Result<HashMap<String, TypedTensor<f3
 
                 // It is stored in Safetensors file as
                 //
-                // a b c d e f 
+                // a b c d e f
 
                 let mut raw_tensor = Vec::new();
 
                 for col in 0..shape1 {
                     for row in 0..shape0 {
                         // F32 is 4 bytes long.
-                        let b = begin + 4 * (row * shape1 + col);  // Safetensors file is ROW-major!
+                        let b = begin + 4 * (row * shape1 + col); // Safetensors file is ROW-major!
                         let e = b + 4;
 
                         let f = f32::from_le_bytes(*byte_buffer[b..e].as_array::<4>().unwrap());
@@ -163,7 +174,8 @@ pub fn st_to_tf(safetensors_path: &str) -> Result<HashMap<String, TypedTensor<f3
                     }
                 }
 
-                let tensor = TypedTensor::<f32>::from_vec_col_major(vec![shape0, shape1], raw_tensor)?;  // 2D
+                let tensor =
+                    TypedTensor::<f32>::from_vec_col_major(vec![shape0, shape1], raw_tensor)?; // 2D
 
                 tensors.insert(tensor_name.to_string(), tensor);
             }

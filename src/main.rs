@@ -131,7 +131,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         id_to_token.insert(id.as_usize().unwrap(), token);
     }
 
-    let tensors = loader::st_to_tf(safetensors_path)?;
+    let tensors = loader::load_safetensors(safetensors_path)?;
 
     // looks messy...
     let mut ids = args[2..].into_iter().map(|id| id.parse::<usize>().unwrap()).collect::<Vec<usize>>();
