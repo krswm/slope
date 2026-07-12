@@ -8,10 +8,10 @@ use serde_json::Value;
 use tenferro_runtime::TypedTensor;
 
 #[derive(Deserialize)]
-struct TensorInfo {
+struct Info {
     dtype: String,
     shape: Vec<usize>,
-    data_offsets: Vec<usize>,
+    data_offsets: [usize; 2],
 }
 
 /// Load a Safetensors file and convert the tensors into `tenferro_runtime::TypedTensor<f32>`.
@@ -40,111 +40,75 @@ pub fn load_safetensors(
         buffer
     };
 
-    let tensors = {
-        let mut tensors = HashMap::new();
+    let mut tensors = HashMap::new();
 
-        print!("\x1b[90mLoading Safetensors…\x1b[39m ");
-        std::io::stdout().flush()?;
+    print!("\x1b[90mLoading Safetensors…\x1b[39m ");
+    std::io::stdout().flush()?;
 
-        for (key, value) in header.into_iter() {
-            // I do not use metadata in my inferenece engine.
-            if key == "__metadata__" {
-                continue;
-            }
-
-            let tensor_name = key;
-            let tensor_info: TensorInfo = serde_json::from_value(value)?;
-
-            let begin = tensor_info.data_offsets[0];
-            let (shape0, shape1, size) = if tensor_info.shape.len() == 2 {
-                (
-                    tensor_info.shape[0],
-                    tensor_info.shape[1],
-                    tensor_info.shape[0] * tensor_info.shape[1],
-                )
-            } else {
-                (tensor_info.shape[0], 0usize, tensor_info.shape[0])
-            };
-
-            if tensor_info.dtype == "F32" && shape0 != 0 {
-                if shape1 == 0 {
-                    // 1D
-                    let mut raw_tensor = Vec::new();
-
-                    for i in 0..size {
-                        // F32 is 4 bytes long.
-                        let b = begin + 4 * i;
-                        let e = b + 4;
-
-                        let f = f32::from_le_bytes(*byte_buffer[b..e].as_array::<4>().unwrap());
-
-                        raw_tensor.push(f);
-                    }
-
-                    let tensor = TypedTensor::<f32>::from_vec_col_major(vec![shape0], raw_tensor)?;
-
-                    tensors.insert(tensor_name.to_string(), tensor);
-                } else {
-                    // 2D
-                    // Safetensors is ROW-major
-                    // source: https://github.com/safetensors/safetensors#format
-                    //
-                    // 1 2 3
-                    // 4 5 6
-
-                    // tenferro is COLUMN-major
-                    // source: https://tensor4all.org/tenferro-rs/getting-started/pytorch-jax-mapping.html#column-major-storage
-                    //
-                    // 1 3 5
-                    // 2 4 6
-
-                    // Suppose We have a matrix
-                    //
-                    // a b c
-                    // d e f
-                    //
-                    // shape_0 = 2  (num of rows)
-                    // shape_1 = 3  (num of columns)
-
-                    // It is stored in Safetensors file as
-                    //
-                    // a b c d e f
-
-                    // F32 is 4 bytes long.
-                    let foo: Vec<f32> = byte_buffer[begin..(begin + 4 * shape0 * shape1)].chunks_exact(4).map(|c| f32::from_le_bytes(*c.as_array::<4>().unwrap())).collect();
-
-                    let mut raw_tensor = Vec::with_capacity(shape0 * shape1);
-
-
-                    for ind1 in 0..shape1 {
-                        for ind0 in 0..shape0 {
-                            /*
-                            let b = begin + 4 * (ind0 * shape1 + ind1); // Safetensors file is ROW-major!
-                            let e = b + 4;
-
-                            let f = f32::from_le_bytes(*byte_buffer[b..e].as_array::<4>().unwrap());
-
-                            raw_tensor.push(f);
-                            */
-
-                            raw_tensor.push(*foo.get(ind0 * shape1 + ind1).unwrap());
-                        }
-                    }
-
-                    let tensor =
-                        TypedTensor::<f32>::from_vec_col_major(vec![shape0, shape1], raw_tensor)?; // 2D
-
-                    tensors.insert(tensor_name.to_string(), tensor);
-                }
-            }
-
-            print!("\x1b[100m \x1b[49m");
-            std::io::stdout().flush()?;
+    for (key, value) in header.into_iter() {
+        // I do not use metadata in my inferenece engine.
+        if key == "__metadata__" {
+            continue;
         }
-        println!(" \x1b[90mDone.\x1b[39m");
 
-        tensors
-    };
+        let name = key;
+        let info: Info = serde_json::from_value(value)?;
+
+        // My inference engine uses only f32 tensors.
+        if info.dtype != "F32" {
+            continue;
+        }
+
+        // f32 is 4 bytes long.
+        let size = 4 * info.shape.iter().product::<usize>();
+        let begin = info.data_offsets[0];
+        let end = info.data_offsets[0];
+        if 4 * size < end - begin {
+            return Err("tensor data smaller than tensor shape suggests".into());
+        }
+
+        let rowmaj = byte_buffer[begin..begin + size]
+            .chunks_exact(4)
+            .map(|chunk| f32::from_le_bytes(*chunk.as_array::<4>().unwrap()))
+            .collect();
+
+        // ⎛a₁₁ a₁₂ a₁₃⎞
+        // ⎝a₂₁ a₂₂ a₂₃⎠
+        //
+        // Safetensors uses row-major: a₁₁ a₁₂ a₁₃ a₂₁ a₂₂ a₂₃.
+        // https://github.com/safetensors/safetensors#format
+        //
+        // tenferro uses column-major: a₁₁ a₂₁ a₁₂ a₂₂ a₁₃ a₂₃.
+        // https://tensor4all.org/tenferro-rs/getting-started/pytorch-jax-mapping.html#column-major-storage
+
+        // My inference engine uses only 1D and 2D tensors.
+        match info.shape.len() {
+            1 => {
+                // Row-major and column-major are identical in 1D.
+                let colmaj = rowmaj;
+
+                let tensor = TypedTensor::<f32>::from_vec_col_major(info.shape, colmaj)?;
+                tensors.insert(name.to_string(), tensor);
+            }
+            2 => {
+                let mut colmaj = Vec::with_capacity(info.shape[0] * info.shape[1]);
+
+                for col in 0..info.shape[1] {
+                    for row in 0..info.shape[0] {
+                        colmaj.push(rowmaj[row * info.shape[1] + col]);
+                    }
+                }
+
+                let tensor = TypedTensor::<f32>::from_vec_col_major(info.shape, colmaj)?;
+                tensors.insert(name, tensor);
+            }
+            _ => (),
+        }
+
+        print!("\x1b[100m \x1b[49m");
+        std::io::stdout().flush()?;
+    }
+    println!(" \x1b[90mDone.\x1b[39m");
 
     Ok(tensors)
 }
