@@ -3,6 +3,8 @@ use std::fs::File;
 use std::io::{BufReader, Write};
 
 use serde_json::Value;
+use tenferro_cpu::CpuBackend;
+use tenferro_runtime::{TypedTensor, TypedTensorOpsExt};
 
 pub mod loader;
 pub mod transformer;
@@ -44,6 +46,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let n_vocab = 50257; // TODO: Don't hardcode this!
 
+    let wte_weight = &tensors["wte.weight"];
+    assert_eq!(wte_weight.shape(), &[vocab_size, n_embd]);
+    let mut backend = CpuBackend::new();
+    let wte_weight_transposed = wte_weight.transpose(&[1, 0], &mut backend).unwrap();
+
     for id in &ids {
         print!(
             "\x1b[1m{}\x1b[22m",
@@ -52,8 +59,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::io::stdout().flush().unwrap();
     }
 
-    for _ in 0..10 {
-        let a = transformer::transform(&tensors, n_ctx, n_embd, n_head, n_layer, vocab_size, &ids)?;
+
+    for _ in 0..100 {
+        let a = transformer::transform(&tensors, &wte_weight_transposed, n_ctx, n_embd, n_head, n_layer, vocab_size, &ids)?;
 
         let mut next_id = 0;
         let mut max = -1.0e12f32; // I'll do greedy sampling

@@ -5,6 +5,7 @@ use tenferro_runtime::{TypedTensor, TypedTensorOpsExt};
 
 pub fn transform(
     tensors: &std::collections::HashMap<String, TypedTensor<f32>>,
+    wte_weight_transposed: &TypedTensor<f32>,
     n_ctx: usize,
     n_embd: usize,
     n_head: usize,
@@ -237,11 +238,9 @@ pub fn transform(
         false,
     );
 
-    let wte_weight = &tensors["wte.weight"];
-    assert_eq!(wte_weight.shape(), &[vocab_size, n_embd]);
-
-    let wte_weight_transposed = wte_weight.transpose(&[1, 0], &mut backend).unwrap();
-    let xv = xu.matmul(&wte_weight_transposed, &mut backend).unwrap();
+    // This is slow! That's undersandable: it's transpose of almost 50000x4 tensor it may not be fast
+    // Solution is to precalculate transposed one.
+    let xv = xu.matmul(wte_weight_transposed, &mut backend).unwrap();
 
     Ok(xv)
 }
