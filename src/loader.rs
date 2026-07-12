@@ -7,7 +7,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use tenferro_runtime::TypedTensor;
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize)]
 struct TensorInfo {
     dtype: String,
     shape: Vec<usize>,
@@ -31,7 +31,6 @@ pub fn load_safetensors(
     let header: HashMap<String, Value> = {
         let mut buffer = vec![0; size_of_header];
         file.read_exact(&mut buffer)?;
-        println!("{:?}", str::from_utf8(&buffer));
         serde_json::from_slice(&buffer)?
     };
 
@@ -45,20 +44,18 @@ pub fn load_safetensors(
         let mut tensors = HashMap::new();
 
         print!("\x1b[90mLoading Safetensors…\x1b[39m ");
-        std::io::stdout().flush().unwrap();
+        std::io::stdout().flush()?;
 
-        for (tensor_name, raw_tensor_info) in header.into_iter() {
-            if tensor_name == "__metadata__" {
+        for (key, value) in header.into_iter() {
+            // I do not use metadata in my inferenece engine.
+            if key == "__metadata__" {
                 continue;
             }
 
-            let tensor_info: TensorInfo = serde_json::from_value(raw_tensor_info)?;
-            
-            print!("\x1b[100m \x1b[49m");
-            std::io::stdout().flush().unwrap();
+            let tensor_name = key;
+            let tensor_info: TensorInfo = serde_json::from_value(value)?;
 
             let begin = tensor_info.data_offsets[0];
-            let dtype = tensor_info.dtype;
             let (shape0, shape1, size) = if tensor_info.shape.len() == 2 {
                 (
                     tensor_info.shape[0],
@@ -69,7 +66,7 @@ pub fn load_safetensors(
                 (tensor_info.shape[0], 0usize, tensor_info.shape[0])
             };
 
-            if dtype == "F32" && shape0 != 0 {
+            if tensor_info.dtype == "F32" && shape0 != 0 {
                 if shape1 == 0 {
                     // 1D
                     let mut raw_tensor = Vec::new();
@@ -84,8 +81,7 @@ pub fn load_safetensors(
                         raw_tensor.push(f);
                     }
 
-                    let tensor: TypedTensor<f32> =
-                        TypedTensor::<f32>::from_vec_col_major(vec![shape0], raw_tensor)?; // 1D
+                    let tensor = TypedTensor::<f32>::from_vec_col_major(vec![shape0], raw_tensor)?;
 
                     tensors.insert(tensor_name.to_string(), tensor);
                 } else {
@@ -114,17 +110,24 @@ pub fn load_safetensors(
                     //
                     // a b c d e f
 
-                    let mut raw_tensor = Vec::new();
+                    // F32 is 4 bytes long.
+                    let foo: Vec<f32> = byte_buffer[begin..(begin + 4 * shape0 * shape1)].chunks_exact(4).map(|c| f32::from_le_bytes(*c.as_array::<4>().unwrap())).collect();
 
-                    for col in 0..shape1 {
-                        for row in 0..shape0 {
-                            // F32 is 4 bytes long.
-                            let b = begin + 4 * (row * shape1 + col); // Safetensors file is ROW-major!
+                    let mut raw_tensor = Vec::with_capacity(shape0 * shape1);
+
+
+                    for ind1 in 0..shape1 {
+                        for ind0 in 0..shape0 {
+                            /*
+                            let b = begin + 4 * (ind0 * shape1 + ind1); // Safetensors file is ROW-major!
                             let e = b + 4;
 
                             let f = f32::from_le_bytes(*byte_buffer[b..e].as_array::<4>().unwrap());
 
                             raw_tensor.push(f);
+                            */
+
+                            raw_tensor.push(*foo.get(ind0 * shape1 + ind1).unwrap());
                         }
                     }
 
@@ -134,6 +137,9 @@ pub fn load_safetensors(
                     tensors.insert(tensor_name.to_string(), tensor);
                 }
             }
+
+            print!("\x1b[100m \x1b[49m");
+            std::io::stdout().flush()?;
         }
         println!(" \x1b[90mDone.\x1b[39m");
 
