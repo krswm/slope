@@ -56,8 +56,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
     let transposed_wte_weight = wte_weight.transpose(&[1, 0], &mut backend)?;
 
-    // A token may contain only a part of UTF-8 sequence.
-    // Decode it incrementally.
     let mut utf8_buffer = Vec::new();
 
     println!();
@@ -136,21 +134,9 @@ fn generate_next_id(
 
 fn decode_unique_encoding(text: &str, utf8_buffer: &mut Vec<u8>) -> String {
     // GPT-2 has a unique encoding.
-    // e.g.: 'Ġ' (U+0120) → ' ' (U+0020)
+    // e.g.: 'Ġ' → ' '
 
-    /*
-    text.chars()
-        .map(|c| {
-            if c as u32 >= 0x100 {
-                char::from_u32(c as u32 - 0x100).unwrap()
-            } else {
-                c
-            }
-        })
-        .collect()
-    */
-
-    let buffer: Vec<u8> = text
+    let new_buffer: Vec<u8> = text
         .chars()
         .map(|c| {
             let x = c as u32;
@@ -165,8 +151,34 @@ fn decode_unique_encoding(text: &str, utf8_buffer: &mut Vec<u8>) -> String {
             }) as u8
         })
         .collect();
-    println!("{:?}", buffer);
 
-    utf8_buffer.push(20);
-    "foobar".to_string()
+    // A token may contain only a part of UTF-8 sequence.
+    // Decode it incrementally.
+
+    let mut buffer = utf8_buffer.clone();
+    buffer.extend(new_buffer);
+    utf8_buffer.clear();
+
+    let mut decoded = "".to_string();
+
+    loop {
+        match std::str::from_utf8(&buffer) {
+            Ok(valid) => {
+                decoded.push_str(valid);
+                return decoded;
+            }
+            Err(err) => {
+                let (valid, remaining) = buffer.split_at(err.valid_up_to());
+                decoded.push_str(std::str::from_utf8(valid).unwrap());
+
+                if let Some(invalid_len) = err.error_len() {
+                    decoded.push(char::REPLACEMENT_CHARACTER);
+                    buffer = remaining[invalid_len..].to_vec();
+                } else {
+                    *utf8_buffer = remaining.to_vec();
+                    return decoded;
+                }
+            }
+        }
+    }
 }
