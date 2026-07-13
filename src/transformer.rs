@@ -20,6 +20,8 @@ pub fn transform(
         return Err("tensor has unexpected shape".into());
     }
 
+    // ==== Embedding ====
+
     // wte_weight[ids]
     let x0 = {
         let mut colmaj = Vec::with_capacity(ids.len() * n_embd);
@@ -51,6 +53,8 @@ pub fn transform(
     let mut x2 = x0.add(&x1, backend)?;
 
     for i_layer in 0..n_layer {
+        // ==== Masked Multi-Head Attention ====
+
         let ln_1_weight = &tensors[&format!("h.{i_layer}.ln_1.weight")];
         if ln_1_weight.shape() != &[n_embd] {
             return Err("tensor has unexpected shape".into());
@@ -90,6 +94,14 @@ pub fn transform(
         let x6 = {
             let size_of_head = n_embd / n_head;
             let mut raw_stacked: Vec<f32> = Vec::with_capacity(ids.len() * n_embd);
+
+            //      ├──── 0..n_head ────┼──── 0..n_head ────┼──── 0..n_head ────┤
+            //      ┏━━━┯━━━┯   ┯━━━┯━━━┳━━━┯━━━┯   ┯━━━┯━━━┳━━━┯━━━┯   ┯━━━┯━━━┓ ┐
+            // x5 = ┃ q │ q │ … │ q │ q ┃ k │ k │ … │ k │ k ┃ v │ v │ … │ v │ v ┃ ids.len() rows
+            //      ┗━━━┷━━━┷   ┷━━━┷━━━┻━━━┷━━━┷   ┷━━━┷━━━┻━━━┷━━━┷   ┷━━━┷━━━┛ ┘
+            //      └─┬─┘
+            //        size_of_head columns
+
             for i_head in 0..n_head {
                 let (q, k, v) = {
                     let mut q_colmaj = Vec::with_capacity(ids.len() * size_of_head);
@@ -182,12 +194,12 @@ pub fn transform(
                 // exp(x11 - max(x11))
                 let x14 = x13.exp(backend)?;
 
-                // sum(exp(x11 - max(x11)))
+                // ∑ exp(x11 - max(x11)))
                 let x15 = x14
                     .reduce_sum(&[1], backend)?
                     .reshape(&[ids.len(), 1], backend)?;
 
-                // exp(x11 - max(x11)) / sum(exp(x11 - max(x11))) = softmax(x11)
+                // exp(x11 - max(x11)) / ∑ exp(x11 - max(x11)) = softmax(x11)
                 let x16 = x14.div(&x15, backend)?;
 
                 // softmax(x11) @ v
@@ -198,39 +210,61 @@ pub fn transform(
             TypedTensor::<f32>::from_vec_col_major(vec![ids.len(), n_embd], raw_stacked)?
         };
 
-        let attn_c_proj_weight = tensors
-            .get(&format!("h.{i_layer}.attn.c_proj.weight"))
-            .unwrap();
-        let attn_c_proj_bias = tensors
-            .get(&format!("h.{i_layer}.attn.c_proj.bias"))
-            .unwrap();
+        let attn_c_proj_weight = &tensors[&format!("h.{i_layer}.attn.c_proj.weight")];
+        if attn_c_proj_weight.shape() != &[n_embd, n_embd] {
+            return Err("tensor has unexpected shape".into());
+        }
 
-        let xl = x6.matmul(&attn_c_proj_weight, backend).unwrap();
+        // x6 @ attn_c_proj_weight
+        let x18 = x6.matmul(&attn_c_proj_weight, backend)?;
 
-        let xm = xl.add(&attn_c_proj_bias, backend).unwrap();
+        let attn_c_proj_bias = &tensors[&format!("h.{i_layer}.attn.c_proj.bias")];
+        if attn_c_proj_bias.shape() != &[n_embd] {
+            return Err("tensor has unexpected shape".into());
+        }
 
-        let xn = x2.add(&xm, backend).unwrap();
+        // x6 @ attn_c_proj_weight + attn_c_proj_bias
+        let x19 = x18.add(&attn_c_proj_bias, backend)?;
 
-        let ln_2_weight = tensors.get(&format!("h.{i_layer}.ln_2.weight")).unwrap(); // gamma
-        let ln_2_bias = tensors.get(&format!("h.{i_layer}.ln_2.bias")).unwrap(); // beta
-        let xo = layer_norm(
-            &xn,
+        // x2 + x19
+        let x20 = x2.add(&x19, backend).unwrap();
+
+        // ==== Feed Forward ====
+
+        let ln_2_weight = &tensors[&format!("h.{i_layer}.ln_2.weight")];
+        if ln_2_weight.shape() != &[n_embd] {
+            return Err("tensor has unexpected shape".into());
+        }
+
+        let ln_2_bias = &tensors[&format!("h.{i_layer}.ln_2.bias")];
+        if ln_2_bias.shape() != &[n_embd] {
+            return Err("tensor has unexpected shape".into());
+        }
+
+        let x21 = layer_norm(
+            &x20,
             ln_2_weight,
             ln_2_bias,
             n_embd,
             ids.len(),
             backend,
-            false,
+            i_layer == 0,
         );
 
-        let mlp_c_fc_weight = tensors
-            .get(&format!("h.{i_layer}.mlp.c_fc.weight"))
-            .unwrap();
-        let mlp_c_fc_bias = tensors.get(&format!("h.{i_layer}.mlp.c_fc.bias")).unwrap();
+        let mlp_c_fc_weight = &tensors[&format!("h.{i_layer}.mlp.c_fc.weight")];
+        if mlp_c_fc_weight.shape() != &[n_embd, 4 * n_embd] {
+            return Err("tensor has unexpected shape".into());
+        }
 
-        let xp = xo.matmul(&mlp_c_fc_weight, backend).unwrap();
+        let mlp_c_fc_bias = &tensors[&format!("h.{i_layer}.mlp.c_fc.bias")];
+        if mlp_c_fc_bias.shape() != &[4 * n_embd] {
+            return Err("tensor has unexpected shape".into());
+        }
 
-        let xq = xp.add(&mlp_c_fc_bias, backend).unwrap();
+        // x21 @ mlp_c_fc_weight + mlp_c_fc_bias
+        let xq = x21
+            .matmul(&mlp_c_fc_weight, backend)?
+            .add(&mlp_c_fc_bias, backend)?;
 
         // GELU
         // The approximation coefficients are according to the original paper that introduced Gelu:
@@ -264,7 +298,7 @@ pub fn transform(
 
         let xt = xs.add(&mlp_c_proj_bias, backend).unwrap();
 
-        x2 = xn.add(&xt, backend).unwrap();
+        x2 = x20.add(&xt, backend).unwrap();
     }
 
     let ln_f_weight = tensors.get("ln_f.weight").unwrap(); // gamma
