@@ -4,7 +4,7 @@ use std::io::{BufReader, Write};
 
 use serde_json::Value;
 use tenferro_cpu::CpuBackend;
-use tenferro_runtime::{TypedTensor, TypedTensorOpsExt};
+use tenferro_runtime::TypedTensorOpsExt;
 
 pub mod loader;
 pub mod transformer;
