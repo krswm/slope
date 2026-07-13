@@ -5,6 +5,7 @@ use std::f32::consts::PI;
 use tenferro_cpu::CpuBackend;
 use tenferro_runtime::{TypedTensor, TypedTensorOpsExt};
 
+/// Transformer for the GPT-2 architecture
 pub fn transform(
     tensors: &HashMap<String, TypedTensor<f32>>,
     transposed_wte_weight: &TypedTensor<f32>,
