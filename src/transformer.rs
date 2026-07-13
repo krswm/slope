@@ -1,78 +1,176 @@
+use std::collections::HashMap;
 use std::error::Error;
 
 use tenferro_cpu::CpuBackend;
 use tenferro_runtime::{TypedTensor, TypedTensorOpsExt};
 
+pub struct SetUp {
+    pub wte_weight: TypedTensor<f32>,
+    pub wpe_weight: TypedTensor<f32>,
+    pub ln_f_weight: TypedTensor<f32>,
+    pub ln_f_bias: TypedTensor<f32>,
+    pub ln_1_weight: Vec<TypedTensor<f32>>,
+    pub ln_1_bias: Vec<TypedTensor<f32>>,
+    pub attn_c_attn_weight: Vec<TypedTensor<f32>>,
+    pub attn_c_attn_bias: Vec<TypedTensor<f32>>,
+    pub attn_c_proj_weight: Vec<TypedTensor<f32>>,
+    pub attn_c_proj_bias: Vec<TypedTensor<f32>>,
+    pub ln_2_weight: Vec<TypedTensor<f32>>,
+    pub ln_2_bias: Vec<TypedTensor<f32>>,
+    pub mlp_c_fc_weight: Vec<TypedTensor<f32>>,
+    pub mlp_c_fc_bias: Vec<TypedTensor<f32>>,
+    pub mlp_c_proj_weight: Vec<TypedTensor<f32>>,
+    pub mlp_c_proj_bias: Vec<TypedTensor<f32>>,
+}
+
+pub fn get_setup(
+    tensors: std::collections::HashMap<String, TypedTensor<f32>>,
+    n_ctx: usize,
+    n_embd: usize,
+    n_head: usize,
+    n_layer: usize,
+    vocab_size: usize,
+    backend: &mut CpuBackend,
+) -> Result<SetUp, Box<dyn Error>> {
+    let wte_weight = *tensors.get("wte.weight").unwrap();
+    let wpe_weight = *tensors.get("wpe.weight").unwrap();
+    let ln_f_weight = *tensors.get("ln_f.weight").unwrap();
+    let ln_f_bias = *tensors.get("ln_f.bias").unwrap();
+
+    let mut ln_1_weight = Vec::new();
+    let mut ln_1_bias = Vec::new();
+    let mut attn_c_attn_weight = Vec::new();
+    let mut attn_c_attn_bias = Vec::new();
+    let mut attn_c_proj_weight = Vec::new();
+    let mut attn_c_proj_bias = Vec::new();
+    let mut ln_2_weight = Vec::new();
+    let mut ln_2_bias = Vec::new();
+    let mut mlp_c_fc_weight = Vec::new();
+    let mut mlp_c_fc_bias = Vec::new();
+    let mut mlp_c_proj_weight = Vec::new();
+    let mut mlp_c_proj_bias = Vec::new();
+
+    for i_layer in 0..n_layer {
+        ln_1_weight.push(*tensors.get(&format!("h.{i_layer}.ln_1.weight")).unwrap());
+        ln_1_bias.push(*tensors.get(&format!("h.{i_layer}.ln_1.bias")).unwrap());
+        attn_c_attn_weight.push(
+            *tensors
+                .get(&format!("h.{i_layer}.attn.c_attn.weight"))
+                .unwrap(),
+        );
+        attn_c_attn_bias.push(
+            *tensors
+                .get(&format!("h.{i_layer}.attn.c_attn.bias"))
+                .unwrap(),
+        );
+        attn_c_proj_weight.push(
+            *tensors
+                .get(&format!("h.{i_layer}.attn.c_proj.weight"))
+                .unwrap(),
+        );
+        attn_c_proj_bias.push(
+            *tensors
+                .get(&format!("h.{i_layer}.attn.c_proj.bias"))
+                .unwrap(),
+        );
+        ln_2_weight.push(*tensors.get(&format!("h.{i_layer}.ln_2.weight")).unwrap());
+        ln_2_bias.push(*tensors.get(&format!("h.{i_layer}.ln_2.bias")).unwrap());
+        mlp_c_fc_weight.push(
+            *tensors
+                .get(&format!("h.{i_layer}.mlp.c_fc.weight"))
+                .unwrap(),
+        );
+        mlp_c_fc_bias.push(*tensors.get(&format!("h.{i_layer}.mlp.c_fc.bias")).unwrap());
+        mlp_c_proj_weight.push(
+            *tensors
+                .get(&format!("h.{i_layer}.mlp.c_proj.weight"))
+                .unwrap(),
+        );
+        mlp_c_proj_bias.push(
+            *tensors
+                .get(&format!("h.{i_layer}.mlp.c_proj.bias"))
+                .unwrap(),
+        );
+    }
+
+    Ok(SetUp {
+        wte_weight: wte_weight,
+        wpe_weight: wpe_weight,
+        ln_f_weight: ln_f_weight,
+        ln_f_bias: ln_f_bias,
+        ln_1_weight: ln_1_weight,
+        ln_1_bias: ln_1_bias,
+        attn_c_attn_weight: attn_c_attn_weight,
+        attn_c_attn_bias: attn_c_attn_bias,
+        attn_c_proj_weight: attn_c_proj_weight,
+        attn_c_proj_bias: attn_c_proj_bias,
+        ln_2_weight: ln_2_weight,
+        ln_2_bias: ln_2_bias,
+        mlp_c_fc_weight: mlp_c_fc_weight,
+        mlp_c_fc_bias: mlp_c_fc_bias,
+        mlp_c_proj_weight: mlp_c_proj_weight,
+        mlp_c_proj_bias: mlp_c_proj_bias,
+    })
+}
+
 pub fn transform(
-    tensors: &std::collections::HashMap<String, TypedTensor<f32>>,
     wte_weight_transposed: &TypedTensor<f32>,
     n_ctx: usize,
     n_embd: usize,
     n_head: usize,
     n_layer: usize,
     vocab_size: usize,
+    su: &SetUp,
     ids: &Vec<usize>,
+    backend: &mut CpuBackend,
 ) -> Result<TypedTensor<f32>, Box<dyn Error>> {
-    let mut backend = CpuBackend::new();
-
     let mut x = {
-        let wte = &tensors["wte.weight"];
-        assert_eq!(wte.shape(), &[vocab_size, n_embd]);
-
         // wte[ids]
         let x0 = {
             let mut colmaj = Vec::with_capacity(ids.len() * n_embd);
             for i in 0..n_embd {
                 for id in ids {
-                    colmaj.push(*wte.get(&[*id, i])?);
+                    colmaj.push(*su.wte_weight.get(&[*id, i])?);
                 }
             }
             TypedTensor::<f32>::from_vec_col_major(vec![ids.len(), n_embd], colmaj)?
         };
-
-        let wpe = &tensors["wpe.weight"];
-        assert_eq!(wpe.shape(), &[n_ctx, n_embd]);
 
         // wpe[range(len(ids))]
         let x1 = {
             let mut colmaj = Vec::with_capacity(ids.len() * n_embd);
             for col in 0..n_embd {
                 for row in 0..ids.len() {
-                    colmaj.push(*wpe.get(&[row, col])?);
+                    colmaj.push(*su.wpe_weight.get(&[row, col])?);
                 }
             }
             TypedTensor::<f32>::from_vec_col_major(vec![ids.len(), n_embd], colmaj)?
         };
 
         // wte[ids] + wpe[range(len(ids))]
-        x0.add(&x1, &mut backend)?
+        x0.add(&x1, backend)?
     };
 
     let n_ids = ids.len();
 
     for i_layer in 0..n_layer {
         let y0 = {
-            let weight = &tensors[&format!("h.{i_layer}.ln_1.weight")];
-            assert_eq!(weight.shape(), &[n_embd]);
-
-            let bias = &tensors[&format!("h.{i_layer}.ln_1.bias")];
-            assert_eq!(bias.shape(), &[n_embd]);
-
-            layer_norm(&x, weight, bias, n_embd, n_ids, &mut backend, i_layer == 0)
+            layer_norm(
+                &x,
+                &su.ln_1_weight[i_layer],
+                &su.ln_1_bias[i_layer],
+                n_embd,
+                n_ids,
+                backend,
+                i_layer == 0,
+            )
         };
 
-
-        let attn_c_attn_weight = &tensors[&format!("h.{i_layer}.attn.c_attn.weight")];
-        assert_eq!(attn_c_attn_weight.shape(), &[n_embd, 3 * n_embd]);
-
         // b0 @ attn_c_attn_weight
-        let b1 = y0.matmul(&attn_c_attn_weight, &mut backend)?;
-
-        let attn_c_attn_bias = &tensors[&format!("h.{i_layer}.attn.c_attn.bias")];
-        assert_eq!(attn_c_attn_bias.shape(), &[3 * n_embd]);
+        let b1 = y0.matmul(&su.attn_c_attn_weight[i_layer], backend)?;
 
         // b0 @ attn_c_attn_weight + attn_c_attn_bias
-        let b2 = b1.add(&attn_c_attn_bias, &mut backend)?;
+        let b2 = b1.add(&su.attn_c_attn_bias[i_layer], backend)?;
 
         let size_of_head = n_embd / n_head;
 
@@ -98,16 +196,16 @@ pub fn transform(
                 )
             };
 
-            let b3 = k.transpose(&[1, 0], &mut backend)?;
+            let b3 = k.transpose(&[1, 0], backend)?;
 
-            let b4 = q.matmul(&b3, &mut backend).unwrap();
+            let b4 = q.matmul(&b3, backend).unwrap();
 
             let b5 = TypedTensor::<f32>::from_vec_col_major(
                 vec![1, 1],
                 vec![(size_of_head as f32).sqrt()],
             )?;
 
-            let b6 = b4.div(&b5, &mut backend)?;
+            let b6 = b4.div(&b5, backend)?;
 
             // Build a triangular matrix
             //
@@ -129,7 +227,7 @@ pub fn transform(
                 TypedTensor::<f32>::from_vec_col_major(vec![n_ids, n_ids], raw_causal_mask)
                     .unwrap();
 
-            let xii = b6.add(&causal_mask, &mut backend).unwrap();
+            let xii = b6.add(&causal_mask, backend).unwrap();
 
             let mut raw_max_xii = Vec::new();
             for row in 0..n_ids {
@@ -141,106 +239,85 @@ pub fn transform(
             }
             let max_xii = TypedTensor::<f32>::from_vec_col_major(vec![n_ids, 1], raw_max_xii)?;
 
-            let negative_shift_xii = xii.sub(&max_xii, &mut backend)?;
+            let negative_shift_xii = xii.sub(&max_xii, backend)?;
 
-            let e = negative_shift_xii.exp(&mut backend)?;
+            let e = negative_shift_xii.exp(backend)?;
 
-            let e_sum = e
-                .reduce_sum(&[1], &mut backend)?
-                .reshape(&[n_ids, 1], &mut backend)?;
+            let e_sum = e.reduce_sum(&[1], backend)?.reshape(&[n_ids, 1], backend)?;
 
-            let xj = e.div(&e_sum, &mut backend)?;
+            let xj = e.div(&e_sum, backend)?;
 
-            let xk = xj.matmul(&v, &mut backend)?;
+            let xk = xj.matmul(&v, backend)?;
 
             raw_stacked.extend(xk.as_slice()?);
         }
         let stacked = TypedTensor::<f32>::from_vec_col_major(vec![n_ids, n_embd], raw_stacked)?;
 
-        let attn_c_proj_weight = tensors
-            .get(&format!("h.{i_layer}.attn.c_proj.weight"))
-            .unwrap();
-        let attn_c_proj_bias = tensors
-            .get(&format!("h.{i_layer}.attn.c_proj.bias"))
+        let xl = stacked
+            .matmul(&su.attn_c_proj_weight[i_layer], backend)
             .unwrap();
 
-        let xl = stacked.matmul(&attn_c_proj_weight, &mut backend).unwrap();
+        let xm = xl.add(&su.attn_c_proj_bias[i_layer], backend).unwrap();
 
-        let xm = xl.add(&attn_c_proj_bias, &mut backend).unwrap();
+        let xn = x.add(&xm, backend).unwrap();
 
-        let xn = x.add(&xm, &mut backend).unwrap();
-
-        let ln_2_weight = tensors.get(&format!("h.{i_layer}.ln_2.weight")).unwrap(); // gamma
-        let ln_2_bias = tensors.get(&format!("h.{i_layer}.ln_2.bias")).unwrap(); // beta
         let xo = layer_norm(
             &xn,
-            ln_2_weight,
-            ln_2_bias,
+            &su.ln_2_weight[i_layer],
+            &su.ln_2_bias[i_layer],
             n_embd,
             n_ids,
-            &mut backend,
+            backend,
             false,
         );
 
-        let mlp_c_fc_weight = tensors
-            .get(&format!("h.{i_layer}.mlp.c_fc.weight"))
-            .unwrap();
-        let mlp_c_fc_bias = tensors.get(&format!("h.{i_layer}.mlp.c_fc.bias")).unwrap();
+        let xp = xo.matmul(&su.mlp_c_fc_weight[i_layer], backend).unwrap();
 
-        let xp = xo.matmul(&mlp_c_fc_weight, &mut backend).unwrap();
-
-        let xq = xp.add(&mlp_c_fc_bias, &mut backend).unwrap();
+        let xq = xp.add(&su.mlp_c_fc_bias[i_layer], backend).unwrap();
 
         // GELU
         // The approximation coefficients are according to the original paper that introduced Gelu:
         // https://arxiv.org/pdf/1606.08415
-        let xq_squared = xq.mul(&xq, &mut backend).unwrap();
-        let xq_cubed = xq_squared.mul(&xq, &mut backend).unwrap();
+        let xq_squared = xq.mul(&xq, backend).unwrap();
+        let xq_cubed = xq_squared.mul(&xq, backend).unwrap();
         let xq_cubed_coef_as_tensor =
             TypedTensor::<f32>::from_vec_col_major(vec![1, 1], vec![0.044715])?;
-        let xq_cubed_scaled = xq_cubed.mul(&xq_cubed_coef_as_tensor, &mut backend)?;
-        let inside_tanh = xq.add(&xq_cubed_scaled, &mut backend).unwrap();
+        let xq_cubed_scaled = xq_cubed.mul(&xq_cubed_coef_as_tensor, backend)?;
+        let inside_tanh = xq.add(&xq_cubed_scaled, backend).unwrap();
         let inside_tanh_coef_as_tensor = TypedTensor::<f32>::from_vec_col_major(
             vec![1, 1],
             vec![(2.0f32 / 3.1415926535897932385f32).sqrt()],
         )?;
-        let inside_tanh_scaled = inside_tanh.mul(&inside_tanh_coef_as_tensor, &mut backend)?;
-        let tanhed = inside_tanh_scaled.tanh(&mut backend).unwrap();
+        let inside_tanh_scaled = inside_tanh.mul(&inside_tanh_coef_as_tensor, backend)?;
+        let tanhed = inside_tanh_scaled.tanh(backend).unwrap();
         let one_as_tensor = TypedTensor::<f32>::from_vec_col_major(vec![1, 1], vec![1.0])?;
-        let tanhed_raised = tanhed.add(&one_as_tensor, &mut backend)?;
-        let xr = xq.mul(&tanhed_raised, &mut backend).unwrap();
+        let tanhed_raised = tanhed.add(&one_as_tensor, backend)?;
+        let xr = xq.mul(&tanhed_raised, backend).unwrap();
         let xr_coef_as_tensor = TypedTensor::<f32>::from_vec_col_major(vec![1, 1], vec![0.5])?;
-        let xr_scaled = xr.mul(&xr_coef_as_tensor, &mut backend)?;
+        let xr_scaled = xr.mul(&xr_coef_as_tensor, backend)?;
 
-        let mlp_c_proj_weight = tensors
-            .get(&format!("h.{i_layer}.mlp.c_proj.weight"))
-            .unwrap();
-        let mlp_c_proj_bias = tensors
-            .get(&format!("h.{i_layer}.mlp.c_proj.bias"))
+        let xs = xr_scaled
+            .matmul(&su.mlp_c_proj_weight[i_layer], backend)
             .unwrap();
 
-        let xs = xr_scaled.matmul(&mlp_c_proj_weight, &mut backend).unwrap();
+        let xt = xs.add(&su.mlp_c_proj_bias[i_layer], backend).unwrap();
 
-        let xt = xs.add(&mlp_c_proj_bias, &mut backend).unwrap();
-
-        x = xn.add(&xt, &mut backend).unwrap();
+        x = xn.add(&xt, backend).unwrap();
     }
 
-    let ln_f_weight = tensors.get("ln_f.weight").unwrap(); // gamma
-    let ln_f_bias = tensors.get("ln_f.bias").unwrap(); // beta
     let xu = layer_norm(
         &x,
-        ln_f_weight,
-        ln_f_bias,
+        &su.ln_f_weight,
+        &su.ln_f_bias,
         n_embd,
         n_ids,
-        &mut backend,
+        backend,
         false,
     );
 
     // This is slow! That's undersandable: it's transpose of almost 50000x4 tensor it may not be fast
     // Solution is to precalculate transposed one.
-    let xv = xu.matmul(wte_weight_transposed, &mut backend).unwrap();
+    let xv = xu.matmul(wte_weight_transposed, backend).unwrap();
 
     Ok(xv)
 }
