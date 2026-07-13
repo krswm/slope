@@ -329,6 +329,7 @@ fn layer_norm(
     let x2 = tensor.sub(&x1, backend)?;
 
     // The original paper of linear normalization uses N(tensor) for denominator of variance.
+    // https://arxiv.org/pdf/1607.06450
 
     // var(tensor) = ∑ (tensor - ⟨tensor⟩)² / N(tensor)
     let x3 = x2
