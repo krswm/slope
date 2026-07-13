@@ -59,9 +59,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::io::stdout().flush().unwrap();
     }
 
-
     for _ in 0..100 {
-        let a = transformer::transform(&tensors, &wte_weight_transposed, n_ctx, n_embd, n_head, n_layer, vocab_size, &ids)?;
+        let a = transformer::transform(
+            &tensors,
+            &wte_weight_transposed,
+            n_ctx,
+            n_embd,
+            n_head,
+            n_layer,
+            vocab_size,
+            &ids,
+            &mut backend,
+        )?;
 
         let mut next_id = 0;
         let mut max = -1.0e12f32; // I'll do greedy sampling
