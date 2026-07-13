@@ -336,11 +336,11 @@ fn layer_norm(
         .reshape(&[tensor.shape()[0], 1], backend)?
         .div(&x0, backend)?;
 
-    // PyTorch uses 1.0e-5 for ε.
+    // PyTorch uses ε = 1.0e-5.
     // https://docs.pytorch.org/docs/2.13/generated/torch.nn.LayerNorm.html
 
     // ε = 1.0e-5
-    let x4 = TypedTensor::<f32>::from_vec_col_major(vec![1], vec![1.0e-5])?;
+    let x4 = TypedTensor::<f32>::from_vec_col_major(vec![1, 1], vec![1.0e-5])?;
 
     // √(var(tensor) + ε)
     let x5 = x3.add(&x4, backend)?.sqrt(backend)?;
