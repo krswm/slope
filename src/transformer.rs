@@ -7,7 +7,7 @@ use tenferro_runtime::{TypedTensor, TypedTensorOpsExt};
 
 pub fn transform(
     tensors: &HashMap<String, TypedTensor<f32>>,
-    wte_weight_transposed: &TypedTensor<f32>,
+    transposed_wte_weight: &TypedTensor<f32>,
     n_ctx: usize,
     n_embd: usize,
     n_head: usize,
@@ -304,7 +304,7 @@ pub fn transform(
     let x26 = layer_norm(&x2, ln_f_weight, ln_f_bias, backend)?;
 
     // x26 @ wte_weightᵀ
-    let x27 = x26.matmul(wte_weight_transposed, backend)?;
+    let x27 = x26.matmul(transposed_wte_weight, backend)?;
 
     Ok(x27)
 }

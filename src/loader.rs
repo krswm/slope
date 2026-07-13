@@ -18,9 +18,9 @@ struct Info {
 ///
 /// [Specification of the Safetensors file format](https://github.com/safetensors/safetensors#format)
 pub fn load_safetensors(
-    path_to_safetensors: &str,
+    path_to_model: &str,
 ) -> Result<HashMap<String, TypedTensor<f32>>, Box<dyn Error>> {
-    let mut file = File::open(path_to_safetensors)?;
+    let mut file = File::open(path_to_model)?;
 
     let size_of_header = {
         let mut buffer = [0; 8];

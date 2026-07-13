@@ -4,8 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-tenferro-runtime = "0.2"
-tenferro-cpu = "0.2"
-json = "0.12.4"
-serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tenferro-cpu = "0.2"
+tenferro-runtime = "0.2"
