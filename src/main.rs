@@ -56,12 +56,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
     let transposed_wte_weight = wte_weight.transpose(&[1, 0], &mut backend)?;
 
+    // A token may contain only a part of UTF-8 sequence.
+    // Decode it incrementally.
+    let mut utf8_buffer = Vec::new();
+
     println!();
     for id in &ids {
-        print!(
-            "\x1b[1;90m{}\x1b[22;39m",
-            decode_unique_encoding(&id_to_token[&id])
-        );
+        let decoded = decode_unique_encoding(&id_to_token[&id], &mut utf8_buffer);
+        print!("\x1b[1;90m{decoded}\x1b[22;39m");
     }
     std::io::stdout().flush()?;
 
@@ -86,10 +88,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         ids.push(next_id);
 
-        print!(
-            "\x1b[1m{}\x1b[22m",
-            decode_unique_encoding(&id_to_token[&next_id])
-        );
+        let decoded = decode_unique_encoding(&id_to_token[&next_id], &mut utf8_buffer);
+        print!("\x1b[1m{decoded}\x1b[22m");
         std::io::stdout().flush()?;
     }
     println!();
@@ -134,10 +134,11 @@ fn generate_next_id(
     Ok(next_id)
 }
 
-fn decode_unique_encoding(text: &str) -> String {
+fn decode_unique_encoding(text: &str, utf8_buffer: &mut Vec<u8>) -> String {
     // GPT-2 has a unique encoding.
     // e.g.: 'Ġ' (U+0120) → ' ' (U+0020)
 
+    /*
     text.chars()
         .map(|c| {
             if c as u32 >= 0x100 {
@@ -147,4 +148,25 @@ fn decode_unique_encoding(text: &str) -> String {
             }
         })
         .collect()
+    */
+
+    let buffer: Vec<u8> = text
+        .chars()
+        .map(|c| {
+            let x = c as u32;
+            (match x {
+                0x0100..=0x0120 => x - 0x0100, // 0x00..=0x20
+                0x0021..=0x007E => x,          // 0x21..=0x7E
+                0x0121..=0x0142 => x - 0x00A2, // 0x7F..=0xA0
+                0x00A1..=0x00AC => x,          // 0xA1..=0xAC
+                0x0143 => 0xAD,                // 0xAD
+                0x00AE..=0x00FF => x,          // 0xAE..=0xFF
+                _ => 0,
+            }) as u8
+        })
+        .collect();
+    println!("{:?}", buffer);
+
+    utf8_buffer.push(20);
+    "foobar".to_string()
 }
