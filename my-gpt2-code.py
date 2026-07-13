@@ -129,6 +129,53 @@ class MyGPT2:
                 id: token for token, id in json.load(file).items()
             }
 
+        with open(vocab_path) as file:
+            chars = [ord(char) for char in sorted(set("".join(json.load(file).keys())))]
+            # print([hex(i) for i in chars])
+            print(chars)
+            print(list(range(0x21, 0x7F)) + list(range(0xA1, 0x144)))
+            # print(hex(173))
+            # 173 is 0xad
+            # U+00ad is soft hyphen
+            # a troublesome character
+            # that looks exactly like a hyphen
+            # in certain conditions
+            # so I guess they avoided it
+            print(chars == list(range(0x21, 0x7F)) + list(range(0xA1, 0xAD)) + list(range(0xAE, 0x144)))
+            # so how to encode 0xad?
+            # a valid UTF-8 may contain it
+            # I'll check it on tiktokenizer and vocab.json
+            # "ｭ" is 0xEF 0xBD 0xAD in UTF-8
+            # with GPT-2 tokenizer, it's 171 121 255
+            # 171 -> "\u00ef"  121 -> "\u00bd"  255 -> "\u0143"
+            # DEL (U+007F) is 0x7f (who'll prompt with this character?)
+            # with GPT-2 tokenizer, it's 221
+            # 221 -> "\u0121"
+            # 0xA0 is nbsp
+            # another annoying character
+            # "Ǡ" is C7 A0 -> 131 254 -> "\u00c7" "\u0142"
+            # I understand it now
+            # first convert the Ġ-text into array of unicode characters
+            # then turn each characters into unicode value
+            # there is only 0x21..0x7f + 0xA1..0xAD + 0xAE..0x144
+            # then map each value like this pseudocode
+            # if 0x21 <= i < 0x7F:
+            #     j = i  # j is now 0x21 <= j < 0x7F
+            # elif 0xA1 <= i < 0xAD:
+            #     j = i  # j is now 0xA1 <= j < 0xAD
+            # elif 0xAE <= i < 0x100:
+            #     j = i  # j is now 0xAE <= j < 0x100
+            # elif 0x100 <= i < 0x121:
+            #     j = i - 0x100  # j is now 0x00 <= j < 0x21
+            # elif i == 0x121:
+            #     j = 0x7F  # j is now 0x7F
+            # elif 0x122 <= i < 0x143:
+            #     j = i - 0xa2  # j is now 0x80 <= j < 0xa1
+            # elif i == 0x143:
+            #     j = 0xAD  # j is now 0xAD
+            # All bytes from j = 0x00 to 0xFF covered!
+
+
     def gpt(self, ids: list[int]) -> torch.Tensor:
         if DEBUG_PRINT:
             print(f"\x1b[32mInput\x1b[39m {ids=}")
@@ -346,15 +393,17 @@ class MyGPT2:
         return weight * (y - y.mean(-1, keepdim=True)) / (y.var(-1, keepdim=True, correction=0.0) + 1e-5).sqrt() + bias
 
     def generate(self, ids: list[int]) -> list[int]:
+        decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+
         print(
             "\x1b[1m" + (
-                b"".join(self.replace_characters(self._id_to_token[id]) for id in ids).decode()
+                decoder.decode(
+                    input=b"".join(self.replace_characters(self._id_to_token[id]) for id in ids)
+                )
             ) + "\x1b[22m",
             end="",
             flush=True,
         )
-
-        decoder = codecs.getincrementaldecoder("utf-8")()
     
         for _ in range(100):
             a = self.gpt(ids)
@@ -423,12 +472,17 @@ class MyGPT2:
 
         raw = bytes(
             [
-                ord(char) - 0xa2 if 0x122 <= ord(char) <= 0x142  # The range is just my guess!
-                else ord(char) - 0x100 if ord(char) >= 0x100
-                else ord(char)
+                ord(char) if 0x21 <= ord(char) < 0x7F
+                else ord(char) if 0xA1 <= ord(char) < 0xAD
+                else ord(char) if 0xAE <= ord(char) < 0x100
+                else (ord(char) - 0x100) if 0x100 <= ord(char) < 0x121
+                else 0x7F if ord(char) == 0x121
+                else (ord(char) - 0xa2) if 0x122 <= ord(char) < 0x143
+                else 0xAD
                 for char in text
             ]
         )
+        # print(raw)
 
         return raw
 
