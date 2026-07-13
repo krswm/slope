@@ -66,15 +66,7 @@ pub fn transform(
             return Err("tensor has unexpected shape".into());
         }
 
-        let x3 = layer_norm(
-            &x2,
-            ln_1_weight,
-            ln_1_bias,
-            n_embd,
-            ids.len(),
-            backend,
-            i_layer == 0,
-        );
+        let x3 = layer_norm(&x2, ln_1_weight, ln_1_bias, backend)?;
 
         let attn_c_attn_weight = &tensors[&format!("h.{i_layer}.attn.c_attn.weight")];
         if attn_c_attn_weight.shape() != &[n_embd, 3 * n_embd] {
@@ -234,15 +226,7 @@ pub fn transform(
             return Err("tensor has unexpected shape".into());
         }
 
-        let x18 = layer_norm(
-            &x17,
-            ln_2_weight,
-            ln_2_bias,
-            n_embd,
-            ids.len(),
-            backend,
-            i_layer == 0,
-        );
+        let x18 = layer_norm(&x17, ln_2_weight, ln_2_bias, backend)?;
 
         let mlp_c_fc_weight = &tensors[&format!("h.{i_layer}.mlp.c_fc.weight")];
         if mlp_c_fc_weight.shape() != &[n_embd, 4 * n_embd] {
@@ -274,7 +258,7 @@ pub fn transform(
         // 0.5
         let x23 = TypedTensor::<f32>::from_vec_col_major(vec![1, 1], vec![0.5])?;
 
-        // GELU(x19) = (tanh((x19 ^ 3 * 0.044715 + x19) * √(2 / π)) + 1) * x19 * 0.5
+        // GELU(x19) = (tanh((x19³ * 0.044715 + x19) * √(2 / π)) + 1) * x19 * 0.5
         let x24 = x19
             .mul(&x19, backend)?
             .mul(&x19, backend)?
@@ -317,15 +301,7 @@ pub fn transform(
         return Err("tensor has unexpected shape".into());
     }
 
-    let x26 = layer_norm(
-        &x2,
-        ln_f_weight,
-        ln_f_bias,
-        n_embd,
-        ids.len(),
-        backend,
-        false,
-    );
+    let x26 = layer_norm(&x2, ln_f_weight, ln_f_bias, backend)?;
 
     // x26 @ wte_weightᵀ
     let x27 = x26.matmul(wte_weight_transposed, backend)?;
@@ -334,77 +310,48 @@ pub fn transform(
 }
 
 fn layer_norm(
-    xb: &TypedTensor<f32>,
+    tensor: &TypedTensor<f32>,
     weight: &TypedTensor<f32>,
     bias: &TypedTensor<f32>,
-    n_embd: usize,
-    n_ids: usize,
     backend: &mut tenferro_cpu::CpuBackend,
-    is_show: bool,
-) -> TypedTensor<f32> {
-    let xb_reduce_sum = xb.reduce_sum(&[1], backend).unwrap();
+) -> Result<TypedTensor<f32>, Box<dyn Error>> {
+    // N(tensor)
+    let x0 = TypedTensor::<f32>::from_vec_col_major(vec![1], vec![tensor.shape()[1] as f32])?;
 
-    let n_embd_as_tensor =
-        TypedTensor::<f32>::from_vec_col_major(vec![1], vec![n_embd as f32]).unwrap();
+    // ⟨tensor⟩ = ∑ tensor / N(tensor)
+    let x1 = tensor
+        .reduce_sum(&[1], backend)?
+        .reshape(&[tensor.shape()[0], 1], backend)?
+        .div(&x0, backend)?;
 
-    let xb_mean = xb_reduce_sum.div(&n_embd_as_tensor, backend).unwrap();
+    // tensor - ⟨tensor⟩
+    let x2 = tensor.sub(&x1, backend)?;
 
-    let xb_mean_brd = xb_mean.reshape(&[n_ids, 1], backend).unwrap();
+    // The original paper of linear normalization uses N(tensor) for denominator of variance.
 
-    //           Sum((x_i - <x>)^2)     Sum(<x^2> - <x>^2)
-    // Var(x) = -------------------- = --------------------
-    //                   N                      N
-    //
-    // I'll use the first formula
-    // The original paper for the layernorm uses 1/N.
-    // https://arxiv.org/pdf/1607.06450
+    // var(tensor) = ∑ (tensor - ⟨tensor⟩)² / N(tensor)
+    let x3 = x2
+        .mul(&x2, backend)?
+        .reduce_sum(&[1], backend)?
+        .reshape(&[tensor.shape()[0], 1], backend)?
+        .div(&x0, backend)?;
 
-    // x - <x>
-    let xb_diff = xb.sub(&xb_mean_brd, backend).unwrap();
+    // PyTorch uses 1.0e-5 for ε.
+    // https://docs.pytorch.org/docs/2.13/generated/torch.nn.LayerNorm.html
 
-    // (x - <x>)^2
-    let xb_fluct = xb_diff.mul(&xb_diff, backend).unwrap();
+    // ε = 1.0e-5
+    let x4 = TypedTensor::<f32>::from_vec_col_major(vec![1], vec![1.0e-5])?;
 
-    // Sum(x - <x>)^2
-    let xb_fluct_sum = xb_fluct.reduce_sum(&[1], backend).unwrap();
+    // √(var(tensor) + ε)
+    let x5 = x3.add(&x4, backend)?.sqrt(backend)?;
 
-    // Sum(x - <x>)^2 / N
-    let xb_var = xb_fluct_sum.div(&n_embd_as_tensor, backend).unwrap();
+    // (tensor - ⟨tensor⟩) / √(var(tensor) + ε) * weight + bias
+    let x6 = x2
+        .div(&x5, backend)?
+        .mul(&weight, backend)?
+        .add(&bias, backend)?;
 
-    // I need
-    //
-    //     x - Mean[x]
-    // ---------------------
-    //  √(Var[x] + epsilon)
-
-    // Numerator is same as x_diff
-
-    // Var[x] + epsilon
-    const LINENORM_EPSILON: f32 = 1e-5;
-
-    let linenorm_epsilon_as_tensor =
-        TypedTensor::<f32>::from_vec_col_major(vec![1], vec![LINENORM_EPSILON]).unwrap();
-
-    let xb_purt = xb_var.add(&linenorm_epsilon_as_tensor, backend).unwrap();
-
-    // √(Var[x] - epsilon)
-    let xb_denomi = xb_purt.sqrt(backend).unwrap();
-
-    let xb_denomi_brd = xb_denomi.reshape(&[n_ids, 1], backend).unwrap();
-
-    //     x - Mean[x]
-    // ---------------------
-    //  √(Var[x] - epsilon)
-
-    let xb_division = xb_diff.div(&xb_denomi_brd, backend).unwrap();
-
-    // LayerNorm[x] = xb_division * gamma + beta
-
-    let xb_division_mul_gamma = xb_division.mul(&weight, backend).unwrap();
-
-    let xc = xb_division_mul_gamma.add(&bias, backend).unwrap();
-
-    xc
+    Ok(x6)
 }
 
 /// Pretty-print a 2D tensor for debug.
