@@ -14,10 +14,10 @@ git clone https://github.com/krswm/slope
 
 ### Step 2: Download the pretrained GPT-2 model.
 
-We’ll install the model from [Hugging Face](https://huggingface.co/openai-community/gpt2).
+We will install the model from [Hugging Face](https://huggingface.co/openai-community/gpt2).
 
 First, install [the Git Xet extention](https://huggingface.co/docs/hub/main/en/xet/using-xet-storage#git).
-If you're using macOS and Homebrew:
+If you are using macOS and Homebrew:
 
 ```
 brew install git-xet
@@ -39,6 +39,13 @@ Watch the model continues your prompt.
 cd slope
 cargo run ../gpt2 'Artificial intelligence is'
 ```
+
+## Source Files
+
+- <src/loader.rs> loads a [Safetensors](https://github.com/safetensors/safetensors) file and convert the tensors into tenferro’s `TypedTensor`.
+- <src/tokenizer.rs> tokenizes your prompt with the BPE algorithm.
+- <src/transformer.rs> is the heart of the GPT-2 inferenece. It receives tokens (your prompt + already generated text) and predicts the next token.
+- <src/main.rs> loads files from the GPT-2 repository and generates text.
 
 ## My Future Plans
 

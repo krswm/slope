@@ -29,7 +29,7 @@ pub struct Config {
     pub vocab_size: usize,
 }
 
-/// Transformer for the GPT-2 architecture
+/// The transformer for the GPT-2 architecture.
 pub fn transform(
     tensors: &HashMap<String, TypedTensor<f32>>,
     transposed_wte_weight: &TypedTensor<f32>,

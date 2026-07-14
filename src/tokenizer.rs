@@ -17,7 +17,7 @@
 use std::collections::HashMap;
 use std::error::Error;
 
-/// Tokenize the input.
+/// Tokenize an input with the BPE algorithm.
 pub fn tokenize(
     token_to_id: &HashMap<String, usize>,
     ranks: &HashMap<(String, String), u32>,
