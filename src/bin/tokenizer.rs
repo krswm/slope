@@ -57,10 +57,12 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
 
             for (i_word, word) in line.split(" ").enumerate() {
-                if word != "" {
-                    tokens.push(
-                        if i_word == 0 { word.to_string() } else { let mut token = " ".to_string(); token.push_str(word); token.clone() }
-                    );
+                if i_word == 0 && word != "" {
+                    tokens.push(word.to_string());
+                } else if i_word >= 1 {
+                    let mut token = " ".to_string();
+                    token.push_str(word);
+                    tokens.push(token);
                 }
             }
         }
