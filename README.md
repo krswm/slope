@@ -40,6 +40,8 @@ cd slope
 cargo run ../gpt2 'Artificial intelligence is'
 ```
 
+Hit `Control+C` to stop generating text.
+
 ## Source Files
 
 - [`src/loader.rs`](src/loader.rs) loads a [Safetensors](https://github.com/safetensors/safetensors) file and convert the tensors into tenferro’s `TypedTensor`.
