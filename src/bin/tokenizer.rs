@@ -24,11 +24,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         let path = &format!("{}/merges.txt", &args[1]);
         let file = File::open(path)?;
         let reader = BufReader::new(file);
-        let lines = reader.lines();
 
-        let mut ranks: HashMap<(usize, usize), u32> = HashMap::new();
-        let mut rank = 0;
-        for line in lines.map_while(Result::ok) {
+        let mut ranks = HashMap::new();
+        let mut rank = 0u32;
+        for line in reader.lines().map_while(Result::ok) {
             // Skip a comment line.
             if line.starts_with("#") {
                 continue;
@@ -46,7 +45,28 @@ fn main() -> Result<(), Box<dyn Error>> {
         ranks
     };
 
-    println!("{ranks:?}");
+    // Token IDs
+    let ids = {
+        let input = &args[2];
+        println!("{input:?}");
+
+        let mut tokens = Vec::new();
+        for (i_line, line) in input.split("\n").enumerate() {
+            if i_line >= 1 {
+                tokens.push("\n".to_string());
+            }
+
+            for (i_word, word) in line.split(" ").enumerate() {
+                if word != "" {
+                    tokens.push(
+                        if i_word == 0 { word.to_string() } else { let mut token = " ".to_string(); token.push_str(word); token.clone() }
+                    );
+                }
+            }
+        }
+
+        println!("{tokens:?}");
+    };
 
     Ok(())
 }
