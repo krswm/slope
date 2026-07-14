@@ -2,6 +2,8 @@
 
 I built a GPT-2 inference engine from scratch in Rust.
 
+![Demo](asset/demo.gif)
+
 ## Quickstart
 
 I made this project just for educational purpose. Use at your own risk.
