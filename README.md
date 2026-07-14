@@ -44,7 +44,7 @@ Hit `Control+C` to stop generating text.
 
 ## Source Files
 
-- [`src/loader.rs`](src/loader.rs) loads a [Safetensors](https://github.com/safetensors/safetensors) file and convert the tensors into tenferro’s `TypedTensor`.
+- [`src/loader.rs`](src/loader.rs) loads [a Safetensors file](https://github.com/safetensors/safetensors) and convert the tensors into tenferro’s `TypedTensor`.
 - [`src/tokenizer.rs`](src/tokenizer.rs) tokenizes your prompt with the BPE algorithm.
 - [`src/transformer.rs`](src/transformer.rs) is the heart of the GPT-2 inferenece. It receives tokens (your prompt + already generated text) and predicts the next token.
 - [`src/main.rs`](src/main.rs) loads files from the GPT-2 repository and generates text.
@@ -53,7 +53,7 @@ Hit `Control+C` to stop generating text.
 
 - Make the text generation not deterministic. Apply stochasticity for sampling.
 - Optimize the inference. Use techniques such as KV-cache.
-- Use GPU backend. tenferro provides CUDA and WebGPU backend. (I’m not sure whether I have an access for such hardware though…)
+- Use GPU backend. tenferro provides CUDA and WebGPU backend. (I’m not sure whether I currently have an access for such hardware though…)
 - Support variety of LLM architectures beyond GPT-2 such as Llama 2.
 - Ultimately, implement LLM training from scratch. (I’m interested on [TinyStories](https://arxiv.org/pdf/2305.07759).)
 
