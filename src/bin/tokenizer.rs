@@ -74,35 +74,49 @@ fn main() -> Result<(), Box<dyn Error>> {
             if token_to_id.contains_key(token) {
                 ids.push(&token_to_id[token]);
             } else {
-                let symbols: Vec<String> = token.chars().map(|c| c.to_string()).collect();
+                let mut symbols: Vec<String> = token.chars().map(|c| c.to_string()).collect();
 
-                let pairs = {
-                    let mut pairs = Vec::with_capacity(symbols.len() - 1);
-                    for i_char in 0..symbols.len() - 1 {
-                        let token0 = symbols[i_char].clone();
-                        let token1 = symbols[i_char + 1].clone();
-                        pairs.push((token0, token1));
+                while symbols.len() >= 2 {
+                    println!("{symbols:?}");
+
+                    let pairs = {
+                        let mut pairs = Vec::with_capacity(symbols.len() - 1);
+                        for i_char in 0..symbols.len() - 1 {
+                            let token0 = symbols[i_char].clone();
+                            let token1 = symbols[i_char + 1].clone();
+                            pairs.push((token0, token1));
+                        }
+                        pairs
+                    };
+
+                    if pairs.len() == 0 {
+                        break;
                     }
-                    pairs
-                };
 
-                if pairs.len() == 0 {
-                    break;
+                    let mut best_i_pair = usize::MAX;
+                    let mut best_rank = u32::MAX;
+                    for (i_pair, pair) in pairs.iter().enumerate() {
+                        if ranks.contains_key(pair) && ranks[pair] < best_rank {
+                            best_i_pair = i_pair;
+                            best_rank = ranks[pair];
+                        }
+                    }
+
+                    if best_i_pair == usize::MAX {
+                        break;
+                    }
+
+                    let mut best_pair = symbols[best_i_pair].clone();
+                    best_pair.push_str(&symbols[best_i_pair + 1]);
+                    symbols[best_i_pair] = best_pair;
+                    symbols.remove(best_i_pair + 1);
                 }
 
-                let mut best_pair = ("".to_string(), "".to_string());
-                let mut min = u32::MAX;
-                for pair in pairs {
-                    if ranks[&pair] < min {
-                        best_pair = pair.clone();
-                        min = ranks[&pair];
-                    }
+                for symbol in symbols {
+                    ids.push(&token_to_id[&symbol]);
                 }
-                println!("{best_pair:?} {min:?}");
             }
         }
-
-        println!("{tokens:?}");
         println!("{ids:?}");
     };
 
