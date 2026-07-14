@@ -34,12 +34,10 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
 
             let mut split = line.split(" ");
-            let token0 = split.next().unwrap();
-            let token1 = split.next().unwrap();
-            let id0 = &token_to_id[token0];
-            let id1 = &token_to_id[token1];
+            let token0 = split.next().unwrap().to_string();
+            let token1 = split.next().unwrap().to_string();
 
-            ranks.insert((*id0, *id1), rank);
+            ranks.insert((token0, token1), rank);
             rank += 1;
         }
         ranks
@@ -76,7 +74,31 @@ fn main() -> Result<(), Box<dyn Error>> {
             if token_to_id.contains_key(token) {
                 ids.push(&token_to_id[token]);
             } else {
-                todo!("every in spanish");
+                let symbols: Vec<String> = token.chars().map(|c| c.to_string()).collect();
+
+                let pairs = {
+                    let mut pairs = Vec::with_capacity(symbols.len() - 1);
+                    for i_char in 0..symbols.len() - 1 {
+                        let token0 = symbols[i_char].clone();
+                        let token1 = symbols[i_char + 1].clone();
+                        pairs.push((token0, token1));
+                    }
+                    pairs
+                };
+
+                if pairs.len() == 0 {
+                    break;
+                }
+
+                let mut best_pair = ("".to_string(), "".to_string());
+                let mut min = u32::MAX;
+                for pair in pairs {
+                    if ranks[&pair] < min {
+                        best_pair = pair.clone();
+                        min = ranks[&pair];
+                    }
+                }
+                println!("{best_pair:?} {min:?}");
             }
         }
 
@@ -91,16 +113,14 @@ fn encode_unique_encoding(text: &str) -> String {
     text.bytes()
         .map(|b| {
             let x = b as u32;
-            TryInto::<char>::try_into(
-                (match b {
-                    0x00..=0x20 => x + 0x0100, // 0x0100..=0x0120
-                    0x21..=0x7E => x,          // 0x0021..=0x007E
-                    0x7F..=0xA0 => x + 0x00A2, // 0x0121..=0x0142
-                    0xA1..=0xAC => x,          // 0x00A1..=0x00AC
-                    0xAD => 0xAD,              // 0x0143
-                    0xAE..=0xFF => x,          // 0x00AE..=0x00FF
-                }),
-            )
+            TryInto::<char>::try_into(match b {
+                0x00..=0x20 => x + 0x0100, // 0x0100..=0x0120
+                0x21..=0x7E => x,          // 0x0021..=0x007E
+                0x7F..=0xA0 => x + 0x00A2, // 0x0121..=0x0142
+                0xA1..=0xAC => x,          // 0x00A1..=0x00AC
+                0xAD => 0xAD,              // 0x0143
+                0xAE..=0xFF => x,          // 0x00AE..=0x00FF
+            })
             .unwrap()
         })
         .collect()
