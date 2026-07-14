@@ -49,30 +49,45 @@ fn main() -> Result<(), Box<dyn Error>> {
     let ids = {
         let input = &args[2];
 
-        let mut tokens = Vec::new();
+        let mut raw_tokens = Vec::new();
         for (i_line, line) in input.split("\n").enumerate() {
             if i_line >= 1 {
-                tokens.push(encode_unique_encoding("\n".to_string()));
+                raw_tokens.push("\n".to_string());
             }
 
             for (i_word, word) in line.split(" ").enumerate() {
                 if i_word == 0 && word != "" {
-                    tokens.push(encode_unique_encoding(word.to_string()));
+                    raw_tokens.push(word.to_string());
                 } else if i_word >= 1 {
-                    let mut token = " ".to_string();
-                    token.push_str(word);
-                    tokens.push(encode_unique_encoding(token));
+                    let mut raw_token = " ".to_string();
+                    raw_token.push_str(word);
+                    raw_tokens.push(raw_token);
                 }
             }
         }
 
+        let tokens: Vec<String> = raw_tokens
+            .iter()
+            .map(|raw_token| encode_unique_encoding(raw_token))
+            .collect();
+
+        let mut ids = Vec::new();
+        for token in tokens.iter() {
+            if token_to_id.contains_key(token) {
+                ids.push(&token_to_id[token]);
+            } else {
+                todo!("every in spanish");
+            }
+        }
+
         println!("{tokens:?}");
+        println!("{ids:?}");
     };
 
     Ok(())
 }
 
-fn encode_unique_encoding(text: String) -> String {
+fn encode_unique_encoding(text: &str) -> String {
     text.bytes()
         .map(|b| {
             let x = b as u32;
