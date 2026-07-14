@@ -48,21 +48,20 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Token IDs
     let ids = {
         let input = &args[2];
-        println!("{input:?}");
 
         let mut tokens = Vec::new();
         for (i_line, line) in input.split("\n").enumerate() {
             if i_line >= 1 {
-                tokens.push("\n".to_string());
+                tokens.push(encode_unique_encoding("\n".to_string()));
             }
 
             for (i_word, word) in line.split(" ").enumerate() {
                 if i_word == 0 && word != "" {
-                    tokens.push(word.to_string());
+                    tokens.push(encode_unique_encoding(word.to_string()));
                 } else if i_word >= 1 {
                     let mut token = " ".to_string();
                     token.push_str(word);
-                    tokens.push(token);
+                    tokens.push(encode_unique_encoding(token));
                 }
             }
         }
@@ -71,4 +70,23 @@ fn main() -> Result<(), Box<dyn Error>> {
     };
 
     Ok(())
+}
+
+fn encode_unique_encoding(text: String) -> String {
+    text.bytes()
+        .map(|b| {
+            let x = b as u32;
+            TryInto::<char>::try_into(
+                (match b {
+                    0x00..=0x20 => x + 0x0100, // 0x0100..=0x0120
+                    0x21..=0x7E => x,          // 0x0021..=0x007E
+                    0x7F..=0xA0 => x + 0x00A2, // 0x0121..=0x0142
+                    0xA1..=0xAC => x,          // 0x00A1..=0x00AC
+                    0xAD => 0xAD,              // 0x0143
+                    0xAE..=0xFF => x,          // 0x00AE..=0x00FF
+                }),
+            )
+            .unwrap()
+        })
+        .collect()
 }
