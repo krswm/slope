@@ -114,20 +114,20 @@ pub fn transform(
                         }
                     }
 
-                    (
-                        TypedTensor::<f32>::from_vec_col_major(
-                            vec![ids.len(), size_of_head],
-                            q_colmaj,
-                        )?,
-                        TypedTensor::<f32>::from_vec_col_major(
-                            vec![ids.len(), size_of_head],
-                            k_colmaj,
-                        )?,
-                        TypedTensor::<f32>::from_vec_col_major(
-                            vec![ids.len(), size_of_head],
-                            v_colmaj,
-                        )?,
-                    )
+                    let q = TypedTensor::<f32>::from_vec_col_major(
+                        vec![ids.len(), size_of_head],
+                        q_colmaj,
+                    )?;
+                    let k = TypedTensor::<f32>::from_vec_col_major(
+                        vec![ids.len(), size_of_head],
+                        k_colmaj,
+                    )?;
+                    let v = TypedTensor::<f32>::from_vec_col_major(
+                        vec![ids.len(), size_of_head],
+                        v_colmaj,
+                    )?;
+
+                    (q, k, v)
                 };
 
                 // kᵀ

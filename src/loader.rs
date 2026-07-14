@@ -44,18 +44,17 @@ pub fn load_safetensors(
 
     print!("\x1b[90mLoading Safetensors…\x1b[39m ");
     std::io::stdout().flush()?;
-
     for (key, value) in header.into_iter() {
         match get_tensor(&mut tensors, key, value, &byte_buffer) {
-            Ok(()) => (),
+            Ok(()) => {
+                print!("\x1b[100m \x1b[49m");
+                std::io::stdout().flush()?;
+            }
             Err(err) => {
                 println!();
                 return Err(err);
             }
         };
-
-        print!("\x1b[100m \x1b[49m");
-        std::io::stdout().flush()?;
     }
     println!(" \x1b[90mDone.\x1b[39m");
 

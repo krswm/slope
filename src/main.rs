@@ -72,13 +72,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     };
 
-    let mut backend = CpuBackend::new();
-    let wte_weight = &tensors["wte.weight"];
-    if wte_weight.shape() != [config.vocab_size, config.n_embd] {
-        return Err("tensor has unexpected shape".into());
-    }
-    let transposed_wte_weight = wte_weight.transpose(&[1, 0], &mut backend)?;
-
     // ==== Tokenization ====
 
     let mut ids = tokenizer::tokenize(&token_to_id, &ranks, &args[2])?;
@@ -89,27 +82,37 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // ==== Inference ====
 
+    // The transposition of wte_weight is expensive since it usually contains millions of parameters.
+    // Transpose it once and reuse it.
+    let mut backend = CpuBackend::new();
+    let wte_weight = &tensors["wte.weight"];
+    if wte_weight.shape() != [config.vocab_size, config.n_embd] {
+        return Err("tensor has unexpected shape".into());
+    }
+    let transposed_wte_weight = wte_weight.transpose(&[1, 0], &mut backend)?;
+
     let mut utf8_buffer = Vec::new();
     loop {
-        let next_id = match generate_next_id(
+        match generate_next_id(
             &tensors,
             &transposed_wte_weight,
             &config,
             &ids,
             &mut backend,
         ) {
-            Ok(next_id) => next_id,
+            Ok(next_id) => {
+                ids.push(next_id);
+
+                let decoded =
+                    tokenizer::decode_unique_encoding(&id_to_token[&next_id], &mut utf8_buffer);
+                print!("\x1b[1m{decoded}\x1b[22m");
+                std::io::stdout().flush()?;
+            }
             Err(err) => {
                 println!();
                 return Err(err);
             }
         };
-
-        ids.push(next_id);
-
-        let decoded = tokenizer::decode_unique_encoding(&id_to_token[&next_id], &mut utf8_buffer);
-        print!("\x1b[1m{decoded}\x1b[22m");
-        std::io::stdout().flush()?;
     }
 }
 
@@ -120,15 +123,15 @@ fn generate_next_id(
     ids: &Vec<usize>,
     backend: &mut CpuBackend,
 ) -> Result<usize, Box<dyn Error>> {
-    let a = transformer::transform(tensors, transposed_wte_weight, config, ids, backend)?;
+    let output = transformer::transform(tensors, transposed_wte_weight, config, ids, backend)?;
 
-    // Greedy sampling: Choose the token with highest probability.
-    let mut max = f32::NEG_INFINITY;
+    // Greedy sampling: Choose the token with the highest probability.
+    let mut best_prob = f32::NEG_INFINITY;
     let mut next_id = 0;
     for col in 0..config.vocab_size {
-        let b = *a.get(&[ids.len() - 1, col])?;
-        if b > max {
-            max = b;
+        let prob = *output.get(&[ids.len() - 1, col])?;
+        if prob > best_prob {
+            best_prob = prob;
             next_id = col;
         }
     }

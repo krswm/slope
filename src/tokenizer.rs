@@ -11,14 +11,14 @@ pub fn tokenize(
         let mut raw_tokens = Vec::new();
         for (i_line, line) in input.split("\n").enumerate() {
             if i_line >= 1 {
-                raw_tokens.push("\n".to_string());
+                raw_tokens.push(String::from("\n"));
             }
 
             for (i_word, word) in line.split(" ").enumerate() {
                 if i_word == 0 && !word.is_empty() {
                     raw_tokens.push(word.to_string());
                 } else if i_word >= 1 {
-                    let mut raw_token = " ".to_string();
+                    let mut raw_token = String::from(" ");
                     raw_token.push_str(word);
                     raw_tokens.push(raw_token);
                 }
@@ -41,7 +41,7 @@ pub fn tokenize(
             } else {
                 // ==== Merge Algorithm ====
 
-                let mut symbols: Vec<String> = token.chars().map(|c| c.to_string()).collect();
+                let mut symbols: Vec<String> = token.chars().map(|x| x.to_string()).collect();
 
                 while symbols.len() >= 2 {
                     let pairs = {
@@ -54,12 +54,12 @@ pub fn tokenize(
                         pairs
                     };
 
-                    let mut best_i_pair = usize::MAX;
                     let mut best_rank = u32::MAX;
+                    let mut best_i_pair = usize::MAX;
                     for (i_pair, pair) in pairs.iter().enumerate() {
                         if ranks.contains_key(pair) && ranks[pair] < best_rank {
-                            best_i_pair = i_pair;
                             best_rank = ranks[pair];
+                            best_i_pair = i_pair;
                         }
                     }
                     if best_i_pair == usize::MAX {
@@ -85,19 +85,19 @@ pub fn tokenize(
 }
 
 // GPT-2 has a unique encoding.
-// e.g.: 'Ġ' → ' '
+// e.g.: 'Ġ' (U+0120) → 0x20
 
 fn encode_unique_encoding(text: &str) -> String {
     text.bytes()
-        .map(|b| {
-            let x = b as u32;
-            TryInto::<char>::try_into(match b {
-                0x00..=0x20 => x + 0x0100, // 0x0100..=0x0120
-                0x21..=0x7E => x,          // 0x0021..=0x007E
-                0x7F..=0xA0 => x + 0x00A2, // 0x0121..=0x0142
-                0xA1..=0xAC => x,          // 0x00A1..=0x00AC
-                0xAD => 0xAD,              // 0x0143
-                0xAE..=0xFF => x,          // 0x00AE..=0x00FF
+        .map(|x| {
+            let y = x as u32;
+            TryInto::<char>::try_into(match x {
+                0x00..=0x20 => y + 0x0100, // 0x0100..=0x0120
+                0x21..=0x7E => y,          // 0x0021..=0x007E
+                0x7F..=0xA0 => y + 0x00A2, // 0x0121..=0x0142
+                0xA1..=0xAC => y,          // 0x00A1..=0x00AC
+                0xAD => 0x0143,            // 0x0143 (0xAD is SOFT HYPHEN)
+                0xAE..=0xFF => y,          // 0x00AE..=0x00FF
             })
             .unwrap()
         })
@@ -107,15 +107,15 @@ fn encode_unique_encoding(text: &str) -> String {
 pub fn decode_unique_encoding(text: &str, utf8_buffer: &mut Vec<u8>) -> String {
     let new_buffer: Vec<u8> = text
         .chars()
-        .map(|c| {
-            let x = c as u32;
-            (match x {
-                0x0100..=0x0120 => x - 0x0100, // 0x00..=0x20
-                0x0021..=0x007E => x,          // 0x21..=0x7E
-                0x0121..=0x0142 => x - 0x00A2, // 0x7F..=0xA0
-                0x00A1..=0x00AC => x,          // 0xA1..=0xAC
-                0x0143 => 0xAD,                // 0xAD
-                0x00AE..=0x00FF => x,          // 0xAE..=0xFF
+        .map(|x| {
+            let y = x as u32;
+            (match y {
+                0x0100..=0x0120 => y - 0x0100, // 0x00..=0x20
+                0x0021..=0x007E => y,          // 0x21..=0x7E
+                0x0121..=0x0142 => y - 0x00A2, // 0x7F..=0xA0
+                0x00A1..=0x00AC => y,          // 0xA1..=0xAC
+                0x0143 => 0xAD,                // 0xAD (0xAD is SOFT HYPHEN)
+                0x00AE..=0x00FF => y,          // 0xAE..=0xFF
                 _ => 0,
             }) as u8
         })
@@ -128,7 +128,7 @@ pub fn decode_unique_encoding(text: &str, utf8_buffer: &mut Vec<u8>) -> String {
     buffer.extend(new_buffer);
     utf8_buffer.clear();
 
-    let mut decoded = "".to_string();
+    let mut decoded = String::from("");
 
     loop {
         match std::str::from_utf8(&buffer) {
