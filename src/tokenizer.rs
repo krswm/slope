@@ -1,16 +1,10 @@
-// I still haven't implemented a tokenizer.
-// Currently, I type token ids directly to debug my inference engine and that's tedious.
-// Let's implement a tokenizer!
-
-// I found a nice blog article.
-// https://sebastianraschka.com/blog/2025/bpe-from-scratch.html
-
 use std::collections::HashMap;
 use std::error::Error;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 
-fn main() -> Result<(), Box<dyn Error>> {
+/// Tokenize an input.
+pub fn tokenize(input: &str) -> Result<Vec<usize>, Box<dyn Error>> {
     let args: Vec<String> = std::env::args().collect();
 
     let token_to_id: HashMap<String, usize> = {
@@ -45,8 +39,6 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Token IDs
     let ids = {
-        let input = &args[2];
-
         let mut raw_tokens = Vec::new();
         for (i_line, line) in input.split("\n").enumerate() {
             if i_line >= 1 {
@@ -69,16 +61,14 @@ fn main() -> Result<(), Box<dyn Error>> {
             .map(|raw_token| encode_unique_encoding(raw_token))
             .collect();
 
-        let mut ids = Vec::new();
+        let mut ids: Vec<usize> = Vec::new();
         for token in tokens.iter() {
             if token_to_id.contains_key(token) {
-                ids.push(&token_to_id[token]);
+                ids.push(token_to_id[token]);
             } else {
                 let mut symbols: Vec<String> = token.chars().map(|c| c.to_string()).collect();
 
                 while symbols.len() >= 2 {
-                    println!("{symbols:?}");
-
                     let pairs = {
                         let mut pairs = Vec::with_capacity(symbols.len() - 1);
                         for i_char in 0..symbols.len() - 1 {
@@ -113,14 +103,15 @@ fn main() -> Result<(), Box<dyn Error>> {
                 }
 
                 for symbol in symbols {
-                    ids.push(&token_to_id[&symbol]);
+                    ids.push(token_to_id[&symbol]);
                 }
             }
         }
-        println!("{ids:?}");
+
+        ids
     };
 
-    Ok(())
+    Ok(ids)
 }
 
 fn encode_unique_encoding(text: &str) -> String {

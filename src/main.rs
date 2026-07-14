@@ -8,6 +8,7 @@ use tenferro_cpu::CpuBackend;
 use tenferro_runtime::{TypedTensor, TypedTensorOpsExt};
 
 pub mod loader;
+pub mod tokenizer;
 pub mod transformer;
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -43,11 +44,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         )
     };
 
-    // Token IDs
-    let mut ids: Vec<usize> = args[2..]
-        .into_iter()
-        .map(|id| id.parse().unwrap())
-        .collect();
+    let mut ids = tokenizer::tokenize(&args[2])?;
 
     let mut backend = CpuBackend::new();
     let wte_weight = &tensors["wte.weight"];
