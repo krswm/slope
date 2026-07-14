@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::error::Error;
 use std::fs::File;
-use std::io::{BufReader, Write};
+use std::io::{BufRead, BufReader, Write};
 
 use serde_json::Value;
 use tenferro_cpu::CpuBackend;
@@ -14,26 +14,54 @@ pub mod transformer;
 fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = std::env::args().collect();
 
+    // ==== Loading Files ====
+
     let tensors = {
         let path = &format!("{}/model.safetensors", &args[1]);
         loader::load_safetensors(path)?
     };
 
-    let id_to_token: HashMap<usize, String> = {
+    let (token_to_id, id_to_token) = {
         let path = &format!("{}/vocab.json", &args[1]);
         let file = File::open(path)?;
         let reader = BufReader::new(file);
+
         let token_to_id: HashMap<String, usize> = serde_json::from_reader(reader)?;
-        token_to_id
+        let id_to_token: HashMap<usize, String> = token_to_id
             .iter()
             .map(|(key, value)| (value.clone(), key.clone()))
-            .collect()
+            .collect();
+        (token_to_id, id_to_token)
+    };
+
+    let ranks = {
+        let path = &format!("{}/merges.txt", &args[1]);
+        let file = File::open(path)?;
+        let reader = BufReader::new(file);
+
+        let mut ranks = HashMap::new();
+        let mut rank = 0u32;
+        for line in reader.lines().map_while(Result::ok) {
+            // Skip a comment line.
+            if line.starts_with("#") {
+                continue;
+            }
+
+            let mut split = line.split(" ");
+            let token0 = split.next().unwrap().to_string();
+            let token1 = split.next().unwrap().to_string();
+
+            ranks.insert((token0, token1), rank);
+            rank += 1;
+        }
+        ranks
     };
 
     let (n_ctx, n_embd, n_head, n_layer, vocab_size) = {
         let path = &format!("{}/config.json", &args[1]);
         let file = File::open(path)?;
         let reader = BufReader::new(file);
+
         let config: HashMap<String, Value> = serde_json::from_reader(reader)?;
         (
             config["n_ctx"].as_u64().unwrap() as usize,
@@ -44,8 +72,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         )
     };
 
-    let mut ids = tokenizer::tokenize(&args[2])?;
-
     let mut backend = CpuBackend::new();
     let wte_weight = &tensors["wte.weight"];
     if wte_weight.shape() != &[vocab_size, n_embd] {
@@ -53,16 +79,18 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
     let transposed_wte_weight = wte_weight.transpose(&[1, 0], &mut backend)?;
 
-    let mut utf8_buffer = Vec::new();
+    // ==== Tokenization ====
+
+    let mut ids = tokenizer::tokenize(&token_to_id, &ranks, &args[2])?;
 
     println!();
-    for id in &ids {
-        let decoded = decode_unique_encoding(&id_to_token[&id], &mut utf8_buffer);
-        print!("\x1b[1;90m{decoded}\x1b[22;39m");
-    }
+    print!("\x1b[1;90m{}\x1b[22;39m", &args[2]);
     std::io::stdout().flush()?;
 
-    for _ in 0..100 {
+    // ==== Inference ====
+
+    let mut utf8_buffer = Vec::new();
+    loop {
         let next_id = match generate_next_id(
             &tensors,
             &transposed_wte_weight,
@@ -83,13 +111,10 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         ids.push(next_id);
 
-        let decoded = decode_unique_encoding(&id_to_token[&next_id], &mut utf8_buffer);
+        let decoded = tokenizer::decode_unique_encoding(&id_to_token[&next_id], &mut utf8_buffer);
         print!("\x1b[1m{decoded}\x1b[22m");
         std::io::stdout().flush()?;
     }
-    println!();
-
-    Ok(())
 }
 
 fn generate_next_id(
@@ -127,55 +152,4 @@ fn generate_next_id(
     }
 
     Ok(next_id)
-}
-
-fn decode_unique_encoding(text: &str, utf8_buffer: &mut Vec<u8>) -> String {
-    // GPT-2 has a unique encoding.
-    // e.g.: 'Ġ' → ' '
-
-    let new_buffer: Vec<u8> = text
-        .chars()
-        .map(|c| {
-            let x = c as u32;
-            (match x {
-                0x0100..=0x0120 => x - 0x0100, // 0x00..=0x20
-                0x0021..=0x007E => x,          // 0x21..=0x7E
-                0x0121..=0x0142 => x - 0x00A2, // 0x7F..=0xA0
-                0x00A1..=0x00AC => x,          // 0xA1..=0xAC
-                0x0143 => 0xAD,                // 0xAD
-                0x00AE..=0x00FF => x,          // 0xAE..=0xFF
-                _ => 0,
-            }) as u8
-        })
-        .collect();
-
-    // A token may contain only a part of UTF-8 sequence.
-    // Decode it incrementally.
-
-    let mut buffer = utf8_buffer.clone();
-    buffer.extend(new_buffer);
-    utf8_buffer.clear();
-
-    let mut decoded = "".to_string();
-
-    loop {
-        match std::str::from_utf8(&buffer) {
-            Ok(valid) => {
-                decoded.push_str(valid);
-                return decoded;
-            }
-            Err(err) => {
-                let (valid, remaining) = buffer.split_at(err.valid_up_to());
-                decoded.push_str(std::str::from_utf8(valid).unwrap());
-
-                if let Some(invalid_len) = err.error_len() {
-                    decoded.push(char::REPLACEMENT_CHARACTER);
-                    buffer = remaining[invalid_len..].to_vec();
-                } else {
-                    *utf8_buffer = remaining.to_vec();
-                    return decoded;
-                }
-            }
-        }
-    }
 }
