@@ -5,20 +5,24 @@ use std::f32::consts::PI;
 use tenferro_cpu::CpuBackend;
 use tenferro_runtime::{TypedTensor, TypedTensorOpsExt};
 
+pub struct Config {
+    pub n_ctx: usize,
+    pub n_embd: usize,
+    pub n_head: usize,
+    pub n_layer: usize,
+    pub vocab_size: usize,
+}
+
 /// Transformer for the GPT-2 architecture
 pub fn transform(
     tensors: &HashMap<String, TypedTensor<f32>>,
     transposed_wte_weight: &TypedTensor<f32>,
-    n_ctx: usize,
-    n_embd: usize,
-    n_head: usize,
-    n_layer: usize,
-    vocab_size: usize,
+    config: &Config,
     ids: &Vec<usize>,
     backend: &mut CpuBackend,
 ) -> Result<TypedTensor<f32>, Box<dyn Error>> {
     let wte_weight = &tensors["wte.weight"];
-    if wte_weight.shape() != &[vocab_size, n_embd] {
+    if wte_weight.shape() != [config.vocab_size, config.n_embd] {
         return Err("tensor has unexpected shape".into());
     }
 
@@ -26,89 +30,87 @@ pub fn transform(
 
     // wte_weight[ids]
     let x0 = {
-        let mut colmaj = Vec::with_capacity(ids.len() * n_embd);
-        for col in 0..n_embd {
+        let mut colmaj = Vec::with_capacity(ids.len() * config.n_embd);
+        for col in 0..config.n_embd {
             for row in ids {
                 colmaj.push(*wte_weight.get(&[*row, col])?);
             }
         }
-        TypedTensor::<f32>::from_vec_col_major(vec![ids.len(), n_embd], colmaj)?
+        TypedTensor::<f32>::from_vec_col_major(vec![ids.len(), config.n_embd], colmaj)?
     };
 
     let wpe_weight = &tensors["wpe.weight"];
-    if wpe_weight.shape() != &[n_ctx, n_embd] {
+    if wpe_weight.shape() != [config.n_ctx, config.n_embd] {
         return Err("tensor has unexpected shape".into());
     }
 
     // wpe_weight[range(len(ids))]
     let x1 = {
-        let mut colmaj = Vec::with_capacity(ids.len() * n_embd);
-        for col in 0..n_embd {
+        let mut colmaj = Vec::with_capacity(ids.len() * config.n_embd);
+        for col in 0..config.n_embd {
             for row in 0..ids.len() {
                 colmaj.push(*wpe_weight.get(&[row, col])?);
             }
         }
-        TypedTensor::<f32>::from_vec_col_major(vec![ids.len(), n_embd], colmaj)?
+        TypedTensor::<f32>::from_vec_col_major(vec![ids.len(), config.n_embd], colmaj)?
     };
 
     // wte[ids] + wpe[range(len(ids))]
     let mut x2 = x0.add(&x1, backend)?;
 
-    for i_layer in 0..n_layer {
+    for i_layer in 0..config.n_layer {
         // ==== Masked Multi-Head Attention ====
 
         let ln_1_weight = &tensors[&format!("h.{i_layer}.ln_1.weight")];
-        if ln_1_weight.shape() != &[n_embd] {
+        if ln_1_weight.shape() != [config.n_embd] {
             return Err("tensor has unexpected shape".into());
         }
 
         let ln_1_bias = &tensors[&format!("h.{i_layer}.ln_1.bias")];
-        if ln_1_bias.shape() != &[n_embd] {
+        if ln_1_bias.shape() != [config.n_embd] {
             return Err("tensor has unexpected shape".into());
         }
 
         let x3 = layer_norm(&x2, ln_1_weight, ln_1_bias, backend)?;
 
         let attn_c_attn_weight = &tensors[&format!("h.{i_layer}.attn.c_attn.weight")];
-        if attn_c_attn_weight.shape() != &[n_embd, 3 * n_embd] {
+        if attn_c_attn_weight.shape() != [config.n_embd, 3 * config.n_embd] {
             return Err("tensor has unexpected shape".into());
         }
 
         let attn_c_attn_bias = &tensors[&format!("h.{i_layer}.attn.c_attn.bias")];
-        if attn_c_attn_bias.shape() != &[3 * n_embd] {
+        if attn_c_attn_bias.shape() != [3 * config.n_embd] {
             return Err("tensor has unexpected shape".into());
         }
 
         // x3 @ attn_c_attn_weight + attn_c_attn_bias
         let x4 = x3
-            .matmul(&attn_c_attn_weight, backend)?
-            .add(&attn_c_attn_bias, backend)?;
+            .matmul(attn_c_attn_weight, backend)?
+            .add(attn_c_attn_bias, backend)?;
 
         let x15 = {
-            let size_of_head = n_embd / n_head;
-            let mut stacked_colmaj: Vec<f32> = Vec::with_capacity(ids.len() * n_embd);
+            let size_of_head = config.n_embd / config.n_head;
+            let mut stacked_colmaj: Vec<f32> = Vec::with_capacity(ids.len() * config.n_embd);
 
-            //      ├──── 0..n_head ────┼──── 0..n_head ────┼──── 0..n_head ────┤
+            //      ├──── 0..config.n_head ────┼──── 0..config.n_head ────┼──── 0..config.n_head ────┤
             //      ┏━━━┯━━━┯   ┯━━━┯━━━┳━━━┯━━━┯   ┯━━━┯━━━┳━━━┯━━━┯   ┯━━━┯━━━┓ ┐
             // x4 = ┃ q │ q │ … │ q │ q ┃ k │ k │ … │ k │ k ┃ v │ v │ … │ v │ v ┃ ids.len() rows
             //      ┗━━━┷━━━┷   ┷━━━┷━━━┻━━━┷━━━┷   ┷━━━┷━━━┻━━━┷━━━┷   ┷━━━┷━━━┛ ┘
             //      └─┬─┘
             //        size_of_head columns
 
-            for i_head in 0..n_head {
+            for i_head in 0..config.n_head {
                 let (q, k, v) = {
                     let mut q_colmaj = Vec::with_capacity(ids.len() * size_of_head);
                     let mut k_colmaj = Vec::with_capacity(ids.len() * size_of_head);
                     let mut v_colmaj = Vec::with_capacity(ids.len() * size_of_head);
 
-                    for col in 0..size_of_head {
+                    for subcol in 0..size_of_head {
                         for row in 0..ids.len() {
-                            q_colmaj
-                                .push(*x4.get(&[row, 0 * n_embd + size_of_head * i_head + col])?);
-                            k_colmaj
-                                .push(*x4.get(&[row, 1 * n_embd + size_of_head * i_head + col])?);
-                            v_colmaj
-                                .push(*x4.get(&[row, 2 * n_embd + size_of_head * i_head + col])?);
+                            let col = size_of_head * i_head + subcol;
+                            q_colmaj.push(*x4.get(&[row, col])?);
+                            k_colmaj.push(*x4.get(&[row, config.n_embd + col])?);
+                            v_colmaj.push(*x4.get(&[row, 2 * config.n_embd + col])?);
                         }
                     }
 
@@ -194,23 +196,23 @@ pub fn transform(
 
                 stacked_colmaj.extend(x14.as_slice()?);
             }
-            TypedTensor::<f32>::from_vec_col_major(vec![ids.len(), n_embd], stacked_colmaj)?
+            TypedTensor::<f32>::from_vec_col_major(vec![ids.len(), config.n_embd], stacked_colmaj)?
         };
 
         let attn_c_proj_weight = &tensors[&format!("h.{i_layer}.attn.c_proj.weight")];
-        if attn_c_proj_weight.shape() != &[n_embd, n_embd] {
+        if attn_c_proj_weight.shape() != [config.n_embd, config.n_embd] {
             return Err("tensor has unexpected shape".into());
         }
 
         let attn_c_proj_bias = &tensors[&format!("h.{i_layer}.attn.c_proj.bias")];
-        if attn_c_proj_bias.shape() != &[n_embd] {
+        if attn_c_proj_bias.shape() != [config.n_embd] {
             return Err("tensor has unexpected shape".into());
         }
 
         // x15 @ attn_c_proj_weight + attn_c_proj_bias
         let x16 = x15
-            .matmul(&attn_c_proj_weight, backend)?
-            .add(&attn_c_proj_bias, backend)?;
+            .matmul(attn_c_proj_weight, backend)?
+            .add(attn_c_proj_bias, backend)?;
 
         // x2 + x16
         let x17 = x2.add(&x16, backend).unwrap();
@@ -218,31 +220,31 @@ pub fn transform(
         // ==== Feed Forward ====
 
         let ln_2_weight = &tensors[&format!("h.{i_layer}.ln_2.weight")];
-        if ln_2_weight.shape() != &[n_embd] {
+        if ln_2_weight.shape() != [config.n_embd] {
             return Err("tensor has unexpected shape".into());
         }
 
         let ln_2_bias = &tensors[&format!("h.{i_layer}.ln_2.bias")];
-        if ln_2_bias.shape() != &[n_embd] {
+        if ln_2_bias.shape() != [config.n_embd] {
             return Err("tensor has unexpected shape".into());
         }
 
         let x18 = layer_norm(&x17, ln_2_weight, ln_2_bias, backend)?;
 
         let mlp_c_fc_weight = &tensors[&format!("h.{i_layer}.mlp.c_fc.weight")];
-        if mlp_c_fc_weight.shape() != &[n_embd, 4 * n_embd] {
+        if mlp_c_fc_weight.shape() != [config.n_embd, 4 * config.n_embd] {
             return Err("tensor has unexpected shape".into());
         }
 
         let mlp_c_fc_bias = &tensors[&format!("h.{i_layer}.mlp.c_fc.bias")];
-        if mlp_c_fc_bias.shape() != &[4 * n_embd] {
+        if mlp_c_fc_bias.shape() != [4 * config.n_embd] {
             return Err("tensor has unexpected shape".into());
         }
 
         // x18 @ mlp_c_fc_weight + mlp_c_fc_bias
         let x19 = x18
-            .matmul(&mlp_c_fc_weight, backend)?
-            .add(&mlp_c_fc_bias, backend)?;
+            .matmul(mlp_c_fc_weight, backend)?
+            .add(mlp_c_fc_bias, backend)?;
 
         // The formula for GELU is according to the original paper of GELU.
         // https://arxiv.org/pdf/1606.08415
@@ -272,19 +274,19 @@ pub fn transform(
             .mul(&x23, backend)?;
 
         let mlp_c_proj_weight = &tensors[&format!("h.{i_layer}.mlp.c_proj.weight")];
-        if mlp_c_proj_weight.shape() != &[4 * n_embd, n_embd] {
+        if mlp_c_proj_weight.shape() != [4 * config.n_embd, config.n_embd] {
             return Err("tensor has unexpected shape".into());
         }
 
         let mlp_c_proj_bias = &tensors[&format!("h.{i_layer}.mlp.c_proj.bias")];
-        if mlp_c_proj_bias.shape() != &[n_embd] {
+        if mlp_c_proj_bias.shape() != [config.n_embd] {
             return Err("tensor has unexpected shape".into());
         }
 
         // x24 @ mlp_c_proj_weight + mlp_c_proj_bias
         let x25 = x24
-            .matmul(&mlp_c_proj_weight, backend)?
-            .add(&mlp_c_proj_bias, backend)?;
+            .matmul(mlp_c_proj_weight, backend)?
+            .add(mlp_c_proj_bias, backend)?;
 
         // x17 + x25
         x2 = x17.add(&x25, backend).unwrap();
@@ -293,12 +295,12 @@ pub fn transform(
     // ==== Projection ====
 
     let ln_f_weight = &tensors["ln_f.weight"];
-    if ln_f_weight.shape() != &[n_embd] {
+    if ln_f_weight.shape() != [config.n_embd] {
         return Err("tensor has unexpected shape".into());
     }
 
     let ln_f_bias = &tensors["ln_f.bias"];
-    if ln_f_bias.shape() != &[n_embd] {
+    if ln_f_bias.shape() != [config.n_embd] {
         return Err("tensor has unexpected shape".into());
     }
 
@@ -350,8 +352,8 @@ fn layer_norm(
     // (tensor - ⟨tensor⟩) / √(var(tensor) + ε) * weight + bias
     let x6 = x2
         .div(&x5, backend)?
-        .mul(&weight, backend)?
-        .add(&bias, backend)?;
+        .mul(weight, backend)?
+        .add(bias, backend)?;
 
     Ok(x6)
 }

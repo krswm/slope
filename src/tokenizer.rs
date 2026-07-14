@@ -15,7 +15,7 @@ pub fn tokenize(
             }
 
             for (i_word, word) in line.split(" ").enumerate() {
-                if i_word == 0 && word != "" {
+                if i_word == 0 && !word.is_empty() {
                     raw_tokens.push(word.to_string());
                 } else if i_word >= 1 {
                     let mut raw_token = " ".to_string();

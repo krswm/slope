@@ -66,7 +66,7 @@ fn get_tensor(
     tensors: &mut HashMap<String, TypedTensor<f32>>,
     key: String,
     value: Value,
-    byte_buffer: &Vec<u8>,
+    byte_buffer: &[u8],
 ) -> Result<(), Box<dyn Error>> {
     // I do not use metadata in my inferenece engine.
     if key == "__metadata__" {

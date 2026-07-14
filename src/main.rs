@@ -29,7 +29,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         let token_to_id: HashMap<String, usize> = serde_json::from_reader(reader)?;
         let id_to_token: HashMap<usize, String> = token_to_id
             .iter()
-            .map(|(key, value)| (value.clone(), key.clone()))
+            .map(|(key, value)| (*value, key.clone()))
             .collect();
         (token_to_id, id_to_token)
     };
@@ -57,24 +57,24 @@ fn main() -> Result<(), Box<dyn Error>> {
         ranks
     };
 
-    let (n_ctx, n_embd, n_head, n_layer, vocab_size) = {
+    let config = {
         let path = &format!("{}/config.json", &args[1]);
         let file = File::open(path)?;
         let reader = BufReader::new(file);
 
-        let config: HashMap<String, Value> = serde_json::from_reader(reader)?;
-        (
-            config["n_ctx"].as_u64().unwrap() as usize,
-            config["n_embd"].as_u64().unwrap() as usize,
-            config["n_head"].as_u64().unwrap() as usize,
-            config["n_layer"].as_u64().unwrap() as usize,
-            config["vocab_size"].as_u64().unwrap() as usize,
-        )
+        let conf: HashMap<String, Value> = serde_json::from_reader(reader)?;
+        transformer::Config {
+            n_ctx: conf["n_ctx"].as_u64().unwrap() as usize,
+            n_embd: conf["n_embd"].as_u64().unwrap() as usize,
+            n_head: conf["n_head"].as_u64().unwrap() as usize,
+            n_layer: conf["n_layer"].as_u64().unwrap() as usize,
+            vocab_size: conf["vocab_size"].as_u64().unwrap() as usize,
+        }
     };
 
     let mut backend = CpuBackend::new();
     let wte_weight = &tensors["wte.weight"];
-    if wte_weight.shape() != &[vocab_size, n_embd] {
+    if wte_weight.shape() != [config.vocab_size, config.n_embd] {
         return Err("tensor has unexpected shape".into());
     }
     let transposed_wte_weight = wte_weight.transpose(&[1, 0], &mut backend)?;
@@ -94,11 +94,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         let next_id = match generate_next_id(
             &tensors,
             &transposed_wte_weight,
-            n_ctx,
-            n_embd,
-            n_head,
-            n_layer,
-            vocab_size,
+            &config,
             &ids,
             &mut backend,
         ) {
@@ -120,30 +116,16 @@ fn main() -> Result<(), Box<dyn Error>> {
 fn generate_next_id(
     tensors: &HashMap<String, TypedTensor<f32>>,
     transposed_wte_weight: &TypedTensor<f32>,
-    n_ctx: usize,
-    n_embd: usize,
-    n_head: usize,
-    n_layer: usize,
-    vocab_size: usize,
+    config: &transformer::Config,
     ids: &Vec<usize>,
     backend: &mut CpuBackend,
 ) -> Result<usize, Box<dyn Error>> {
-    let a = transformer::transform(
-        &tensors,
-        &transposed_wte_weight,
-        n_ctx,
-        n_embd,
-        n_head,
-        n_layer,
-        vocab_size,
-        &ids,
-        backend,
-    )?;
+    let a = transformer::transform(tensors, transposed_wte_weight, config, ids, backend)?;
 
     // Greedy sampling: Choose the token with highest probability.
     let mut max = f32::NEG_INFINITY;
     let mut next_id = 0;
-    for col in 0..vocab_size {
+    for col in 0..config.vocab_size {
         let b = *a.get(&[ids.len() - 1, col])?;
         if b > max {
             max = b;
