@@ -7,22 +7,25 @@ pub fn tokenize(
     ranks: &HashMap<(String, String), u32>,
     input: &str,
 ) -> Result<Vec<usize>, Box<dyn Error>> {
-    let mut raw_tokens = Vec::new();
-    for (i_line, line) in input.split("\n").enumerate() {
-        if i_line >= 1 {
-            raw_tokens.push("\n".to_string());
-        }
+    let raw_tokens = {
+        let mut raw_tokens = Vec::new();
+        for (i_line, line) in input.split("\n").enumerate() {
+            if i_line >= 1 {
+                raw_tokens.push("\n".to_string());
+            }
 
-        for (i_word, word) in line.split(" ").enumerate() {
-            if i_word == 0 && word != "" {
-                raw_tokens.push(word.to_string());
-            } else if i_word >= 1 {
-                let mut raw_token = " ".to_string();
-                raw_token.push_str(word);
-                raw_tokens.push(raw_token);
+            for (i_word, word) in line.split(" ").enumerate() {
+                if i_word == 0 && word != "" {
+                    raw_tokens.push(word.to_string());
+                } else if i_word >= 1 {
+                    let mut raw_token = " ".to_string();
+                    raw_token.push_str(word);
+                    raw_tokens.push(raw_token);
+                }
             }
         }
-    }
+        raw_tokens
+    };
 
     let tokens: Vec<String> = raw_tokens
         .iter()
@@ -30,52 +33,53 @@ pub fn tokenize(
         .collect();
 
     // Token IDs
-    let mut ids: Vec<usize> = Vec::new();
-    for token in tokens.iter() {
-        if token_to_id.contains_key(token) {
-            ids.push(token_to_id[token]);
-        } else {
-            let mut symbols: Vec<String> = token.chars().map(|c| c.to_string()).collect();
+    let ids = {
+        let mut ids: Vec<usize> = Vec::new();
+        for token in tokens.iter() {
+            if token_to_id.contains_key(token) {
+                ids.push(token_to_id[token]);
+            } else {
+                // ==== Merge Algorithm ====
 
-            while symbols.len() >= 2 {
-                let pairs = {
-                    let mut pairs = Vec::with_capacity(symbols.len() - 1);
-                    for i_char in 0..symbols.len() - 1 {
-                        let token0 = symbols[i_char].clone();
-                        let token1 = symbols[i_char + 1].clone();
-                        pairs.push((token0, token1));
+                let mut symbols: Vec<String> = token.chars().map(|c| c.to_string()).collect();
+
+                while symbols.len() >= 2 {
+                    let pairs = {
+                        let mut pairs = Vec::with_capacity(symbols.len() - 1);
+                        for i_char in 0..symbols.len() - 1 {
+                            let token0 = symbols[i_char].clone();
+                            let token1 = symbols[i_char + 1].clone();
+                            pairs.push((token0, token1));
+                        }
+                        pairs
+                    };
+
+                    let mut best_i_pair = usize::MAX;
+                    let mut best_rank = u32::MAX;
+                    for (i_pair, pair) in pairs.iter().enumerate() {
+                        if ranks.contains_key(pair) && ranks[pair] < best_rank {
+                            best_i_pair = i_pair;
+                            best_rank = ranks[pair];
+                        }
                     }
-                    pairs
-                };
-
-                if pairs.len() == 0 {
-                    break;
-                }
-
-                let mut best_i_pair = usize::MAX;
-                let mut best_rank = u32::MAX;
-                for (i_pair, pair) in pairs.iter().enumerate() {
-                    if ranks.contains_key(pair) && ranks[pair] < best_rank {
-                        best_i_pair = i_pair;
-                        best_rank = ranks[pair];
+                    if best_i_pair == usize::MAX {
+                        break;
                     }
+
+                    let mut best_pair = symbols[best_i_pair].clone();
+                    best_pair.push_str(&symbols[best_i_pair + 1]);
+                    symbols[best_i_pair] = best_pair;
+                    symbols.remove(best_i_pair + 1);
                 }
 
-                if best_i_pair == usize::MAX {
-                    break;
+                for symbol in symbols {
+                    ids.push(token_to_id[&symbol]);
                 }
-
-                let mut best_pair = symbols[best_i_pair].clone();
-                best_pair.push_str(&symbols[best_i_pair + 1]);
-                symbols[best_i_pair] = best_pair;
-                symbols.remove(best_i_pair + 1);
-            }
-
-            for symbol in symbols {
-                ids.push(token_to_id[&symbol]);
             }
         }
-    }
+
+        ids
+    };
 
     Ok(ids)
 }
