@@ -6,6 +6,8 @@ I built a GPT-2 inference engine from scratch in Rust.
 
 I made this project just for educational purpose. Use at your own risk.
 
+It is assumed that you have Git and Cargo (Rust) installed on your machine.
+
 ### Step 1: Clone this repository.
 
 ```
