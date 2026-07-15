@@ -29,6 +29,20 @@ pub mod transformer;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = std::env::args().collect();
+    if args.len() != 3 {
+        println!("GPT-2 Inference with tenferro");
+        println!();
+        println!(
+            "Usage: cargo run \x1b[4m<path to model repository>\x1b[24m \x1b[4m<your prompt>\x1b[24m",
+        );
+        println!();
+        println!("You may have to enclose 'your prompt' with quotes.");
+        return Ok(());
+    }
+    if args[2].is_empty() {
+        println!("Your prompt should not be empty.");
+        return Ok(());
+    }
 
     // ==== Loading Files ====
 
