@@ -21,13 +21,15 @@ use std::io::{BufRead, BufReader, Write};
 
 use serde_json::Value;
 use tenferro_cpu::CpuBackend;
-use tenferro_runtime::{TypedTensor, TypedTensorOpsExt};
+use tenferro_runtime::TypedTensor;
 
 pub mod loader;
 pub mod tokenizer;
 pub mod transformer;
 
 fn main() -> Result<(), Box<dyn Error>> {
+    // ==== Arguments ====
+
     let args: Vec<String> = std::env::args().collect();
     if args.len() != 3 {
         println!("GPT-2 Inference with tenferro");
@@ -112,24 +114,10 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // ==== Inference ====
 
-    // The transposition of wte_weight is expensive since it usually contains millions of parameters.
-    // Transpose it once and reuse it.
     let mut backend = CpuBackend::new();
-    let wte_weight = &tensors["wte.weight"];
-    if wte_weight.shape() != [config.vocab_size, config.n_embd] {
-        return Err("tensor has unexpected shape".into());
-    }
-    let transposed_wte_weight = wte_weight.transpose(&[1, 0], &mut backend)?;
-
     let mut utf8_buffer = Vec::new();
     loop {
-        match generate_next_id(
-            &tensors,
-            &transposed_wte_weight,
-            &config,
-            &ids,
-            &mut backend,
-        ) {
+        match generate_next_id(&tensors, &config, &ids, &mut backend) {
             Ok(next_id) => {
                 ids.push(next_id);
 
@@ -148,23 +136,20 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 fn generate_next_id(
     tensors: &HashMap<String, TypedTensor<f32>>,
-    transposed_wte_weight: &TypedTensor<f32>,
     config: &transformer::Config,
     ids: &Vec<usize>,
     backend: &mut CpuBackend,
 ) -> Result<usize, Box<dyn Error>> {
-    let output = transformer::transform(tensors, transposed_wte_weight, config, ids, backend)?;
+    let output = transformer::transform(tensors, config, ids, backend)?;
 
     // Greedy sampling: Choose the token with the highest probability.
-    let mut best_prob = f32::NEG_INFINITY;
-    let mut next_id = 0;
-    for col in 0..config.vocab_size {
-        let prob = *output.get(&[ids.len() - 1, col])?;
-        if prob > best_prob {
-            best_prob = prob;
-            next_id = col;
-        }
-    }
+    let next_id = output
+        .host_data()?
+        .iter()
+        .enumerate()
+        .max_by(|(_, prob0), (_, prob1)| prob0.total_cmp(prob1))
+        .map(|(id, _)| id)
+        .unwrap();
 
     Ok(next_id)
 }

@@ -32,7 +32,6 @@ pub struct Config {
 /// The transformer for the GPT-2 architecture.
 pub fn transform(
     tensors: &HashMap<String, TypedTensor<f32>>,
-    transposed_wte_weight: &TypedTensor<f32>,
     config: &Config,
     ids: &Vec<usize>,
     backend: &mut CpuBackend,
@@ -323,10 +322,19 @@ pub fn transform(
 
     let x26 = layer_norm(&x2, ln_f_weight, ln_f_bias, backend)?;
 
-    // x26 @ wte_weightᵀ
-    let x27 = x26.matmul(transposed_wte_weight, backend)?;
+    // x26[-1]ᵀ
+    let x27 = {
+        let mut colmaj = Vec::with_capacity(config.n_embd);
+        for col in 0..config.n_embd {
+            colmaj.push(*x26.get(&[ids.len() - 1, col])?);
+        }
+        TypedTensor::<f32>::from_vec_col_major(vec![config.n_embd, 1], colmaj)?
+    };
 
-    Ok(x27)
+    // wte_weight @ x26[-1]ᵀ
+    let x28 = wte_weight.matmul(&x27, backend)?;
+
+    Ok(x28)
 }
 
 fn layer_norm(
