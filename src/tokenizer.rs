@@ -34,9 +34,7 @@ pub fn tokenize(
                 if i_word == 0 && !word.is_empty() {
                     raw_tokens.push(word.to_string());
                 } else if i_word >= 1 {
-                    let mut raw_token = String::from(" ");
-                    raw_token.push_str(word);
-                    raw_tokens.push(raw_token);
+                    raw_tokens.push(format!(" {word}"));
                 }
             }
         }
@@ -82,9 +80,8 @@ pub fn tokenize(
                         break;
                     }
 
-                    let mut best_pair = symbols[best_i_pair].clone();
-                    best_pair.push_str(&symbols[best_i_pair + 1]);
-                    symbols[best_i_pair] = best_pair;
+                    symbols[best_i_pair] =
+                        format!("{}{}", symbols[best_i_pair], symbols[best_i_pair + 1]);
                     symbols.remove(best_i_pair + 1);
                 }
 
@@ -144,7 +141,7 @@ pub fn decode_unique_encoding(text: &str, utf8_buffer: &mut Vec<u8>) -> String {
     buffer.extend(new_buffer);
     utf8_buffer.clear();
 
-    let mut decoded = String::from("");
+    let mut decoded = String::new();
 
     loop {
         match std::str::from_utf8(&buffer) {
