@@ -28,8 +28,6 @@ pub mod tokenizer;
 pub mod transformer;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    // ==== Arguments ====
-
     let args: Vec<String> = std::env::args().collect();
     if args.len() != 3 {
         println!("GPT-2 Inference with tenferro");
@@ -41,17 +39,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         println!("You may have to enclose 'your prompt' with quotes.");
         return Ok(());
     }
-    if args[2].is_empty() {
-        println!("Your prompt should not be empty.");
-        return Ok(());
-    }
 
     // ==== Loading Files ====
-
-    let tensors = {
-        let path = &format!("{}/model.safetensors", &args[1]);
-        loader::load_safetensors(path)?
-    };
 
     let (token_to_id, id_to_token) = {
         let path = &format!("{}/vocab.json", &args[1]);
@@ -106,7 +95,24 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // ==== Tokenization ====
 
+    if args[2].is_empty() {
+        println!("Your prompt should not be empty.");
+        return Ok(());
+    }
+
     let mut ids = tokenizer::tokenize(&token_to_id, &ranks, &args[2])?;
+
+    if ids.len() >= config.n_ctx {
+        println!("Your prompt exceeds the context length. Try shorter prompt.");
+        return Ok(());
+    }
+
+    // ==== Loading Tensors ====
+
+    let tensors = {
+        let path = &format!("{}/model.safetensors", &args[1]);
+        loader::load_safetensors(path)?
+    };
 
     println!();
     print!("\x1b[1;90m{}\x1b[22;39m", &args[2]);
@@ -119,6 +125,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     loop {
         match generate_next_id(&tensors, &config, &ids, &mut backend) {
             Ok(next_id) => {
+                if ids.len() == config.n_ctx - 1 {
+                    ids.remove(0);
+                }
                 ids.push(next_id);
 
                 let decoded =
