@@ -48,12 +48,12 @@ pub fn tokenize(
 
     // Token IDs
     let ids = {
-        let mut ids: Vec<usize> = Vec::new();
+        let mut ids = Vec::new();
         for token in tokens.iter() {
             if token_to_id.contains_key(token) {
                 ids.push(token_to_id[token]);
             } else {
-                // ==== Merge Algorithm ====
+                // ==== Merge ====
 
                 let mut symbols: Vec<String> = token.chars().map(|x| x.to_string()).collect();
 
@@ -90,7 +90,6 @@ pub fn tokenize(
                 }
             }
         }
-
         ids
     };
 
@@ -142,7 +141,6 @@ pub fn decode_unique_encoding(text: &str, utf8_buffer: &mut Vec<u8>) -> String {
     utf8_buffer.clear();
 
     let mut decoded = String::new();
-
     loop {
         match std::str::from_utf8(&buffer) {
             Ok(valid) => {
