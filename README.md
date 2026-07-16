@@ -41,10 +41,26 @@ Watch the model continues your prompt.
 
 ```
 cd slope
-cargo run ../gpt2 'Artificial intelligence is'
+cargo run --release ../gpt2 'In the future, artificial intelligence will be'
 ```
 
 Hit `Control+C` to stop generating text.
+
+## Supported Models
+
+This program only supports models that are build on the GPT-2 architecture.
+
+This program only supports models that have the following files in the model repository.
+
+- `vocab.json`
+- `merges.txt`
+- `config.json`
+- `model.safetensors`
+
+I have verified that this program works with the following models.
+
+- [GPT-2](https://huggingface.co/openai-community/gpt2).
+- [GPT-2 XL](https://huggingface.co/openai-community/gpt2-xl)
 
 ## Source Files
 
