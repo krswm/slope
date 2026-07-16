@@ -42,6 +42,21 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // ==== Loading Files ====
 
+    let config = {
+        let path = &format!("{}/config.json", &args[1]);
+        let file = File::open(path)?;
+        let reader = BufReader::new(file);
+
+        let conf: HashMap<String, Value> = serde_json::from_reader(reader)?;
+        transformer::Config {
+            n_ctx: conf["n_ctx"].as_u64().unwrap() as usize,
+            n_embd: conf["n_embd"].as_u64().unwrap() as usize,
+            n_head: conf["n_head"].as_u64().unwrap() as usize,
+            n_layer: conf["n_layer"].as_u64().unwrap() as usize,
+            vocab_size: conf["vocab_size"].as_u64().unwrap() as usize,
+        }
+    };
+
     let (token_to_id, id_to_token) = {
         let path = &format!("{}/vocab.json", &args[1]);
         let file = File::open(path)?;
@@ -76,21 +91,6 @@ fn main() -> Result<(), Box<dyn Error>> {
             rank += 1;
         }
         ranks
-    };
-
-    let config = {
-        let path = &format!("{}/config.json", &args[1]);
-        let file = File::open(path)?;
-        let reader = BufReader::new(file);
-
-        let conf: HashMap<String, Value> = serde_json::from_reader(reader)?;
-        transformer::Config {
-            n_ctx: conf["n_ctx"].as_u64().unwrap() as usize,
-            n_embd: conf["n_embd"].as_u64().unwrap() as usize,
-            n_head: conf["n_head"].as_u64().unwrap() as usize,
-            n_layer: conf["n_layer"].as_u64().unwrap() as usize,
-            vocab_size: conf["vocab_size"].as_u64().unwrap() as usize,
-        }
     };
 
     // ==== Tokenization ====
