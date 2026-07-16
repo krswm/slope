@@ -60,6 +60,8 @@ This program only supports models that have the following files in the model rep
 I have verified that this program works with the following models.
 
 - [GPT-2](https://huggingface.co/openai-community/gpt2).
+- [GPT-2 Medium](https://huggingface.co/openai-community/gpt2-medium).
+- [GPT-2 Large](https://huggingface.co/openai-community/gpt2-large)
 - [GPT-2 XL](https://huggingface.co/openai-community/gpt2-xl)
 
 ## Source Files
@@ -89,6 +91,8 @@ I have verified that this program works with the following models.
 This is a hobby project of mine I started from scratch.
 
 I started this project on 2026-07-03 and finished my first implementation on 2026-07-14.
+
+Last update on 2026-07-16.
 
 I used open source LLM inference engines (Ollama, etc.) and open source LLM models (TinyLlama, GPT-2, etc.) only for the purpose to observe their behavior as LLM architecture.
 Except for that, I did **not** use generative AI for this project at all.
