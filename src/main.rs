@@ -33,7 +33,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         println!("GPT-2 Inference with tenferro");
         println!();
         println!(
-            "Usage: cargo run \x1b[4m<path to model repository>\x1b[24m \x1b[4m<your prompt>\x1b[24m",
+            "Usage: cargo run --release \x1b[4m<path to model repository>\x1b[24m \x1b[4m<your prompt>\x1b[24m",
         );
         println!();
         println!("You may have to enclose 'your prompt' with quotes.");
