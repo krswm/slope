@@ -52,15 +52,15 @@ This program only supports models that are build on the GPT-2 architecture.
 
 This program only supports models that have the following files in the model repository.
 
+- `config.json`
 - `vocab.json`
 - `merges.txt`
-- `config.json`
 - `model.safetensors`
 
 I have verified that this program works with the following models.
 
-- [GPT-2](https://huggingface.co/openai-community/gpt2).
-- [GPT-2 Medium](https://huggingface.co/openai-community/gpt2-medium).
+- [GPT-2](https://huggingface.co/openai-community/gpt2)
+- [GPT-2 Medium](https://huggingface.co/openai-community/gpt2-medium)
 - [GPT-2 Large](https://huggingface.co/openai-community/gpt2-large)
 - [GPT-2 XL](https://huggingface.co/openai-community/gpt2-xl)
 
