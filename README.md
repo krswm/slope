@@ -20,7 +20,7 @@ git clone https://github.com/krswm/slope
 
 We will install the model from [Hugging Face](https://huggingface.co/openai-community/gpt2).
 
-First, install [the Git Xet extention](https://huggingface.co/docs/hub/main/en/xet/using-xet-storage#git).
+First, install [the Git Xet extension](https://huggingface.co/docs/hub/main/en/xet/using-xet-storage#git).
 
 ```
 # If you are using macOS and Homebrew:
