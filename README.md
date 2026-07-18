@@ -2,13 +2,15 @@
 
 I built a GPT-2 inference engine from scratch in Rust.
 
+Last updated on 2026-07-18.
+
 ![Demo](asset/demo.gif)
 
 ## Quickstart
 
 I made this project just for educational purpose. Use at your own risk.
 
-It is assumed that you have Git and Cargo (Rust) installed on your machine.
+It is assumed that you have Git, Curl, and Cargo installed on your machine.
 
 ### Step 1: Clone this repository.
 
@@ -16,22 +18,10 @@ It is assumed that you have Git and Cargo (Rust) installed on your machine.
 git clone https://github.com/krswm/slope
 ```
 
-### Step 2: Download the pretrained GPT-2 model.
-
-We will install the model from [Hugging Face](https://huggingface.co/openai-community/gpt2).
-
-First, install [the Git Xet extension](https://huggingface.co/docs/hub/main/en/xet/using-xet-storage#git).
+### Step 2: Download the pretrained GPT-2 model from Hugging Face.
 
 ```
-# If you are using macOS and Homebrew:
-brew install git-xet
-git xet install
-```
-
-Next, clone the model repository. It may take a while to complete.
-
-```
-git clone https://huggingface.co/openai-community/gpt2
+curl --progress-bar --location --remote-name --output-dir model --create-dirs 'https://huggingface.co/openai-community/gpt2/resolve/main/{config.json,vocab.json,merges.txt,model.safetensors}'
 ```
 
 ### Step 3: Start generating text.
@@ -41,7 +31,7 @@ Watch the model continues your prompt.
 
 ```
 cd slope
-cargo run --release ../gpt2 'In the future, artificial intelligence will be'
+cargo run --release ../model 'In the future, artificial intelligence will be'
 ```
 
 Hit `Control+C` to stop generating text.
@@ -91,8 +81,6 @@ I have verified that this program works with the following models.
 This is a hobby project of mine I started from scratch.
 
 I started this project on 2026-07-03 and finished my first implementation on 2026-07-14.
-
-Last update on 2026-07-16.
 
 I used open source LLM inference engines (Ollama, etc.) and open source LLM models (TinyLlama, GPT-2, etc.) only for the purpose to observe their behavior as LLM architecture.
 Except for that, I did **not** use generative AI for this project at all.
