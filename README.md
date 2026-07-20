@@ -2,9 +2,11 @@
 
 I built a GPT-2 inference engine from scratch in Rust.
 
-Last updated on 2026-07-18.
-
 ![Demo](asset/demo.gif)
+
+I also build [a Julia counterpart](https://github.com/krswm/slope-jl).
+
+Last updated on 2026-07-18.
 
 ## Quickstart
 
@@ -12,26 +14,25 @@ I made this project just for educational purpose. Use at your own risk.
 
 It is assumed that you have Git, Curl, and Cargo installed on your machine.
 
-### Step 1: Clone this repository.
+Step 1: **Clone this repository.**
 
 ```
-git clone https://github.com/krswm/slope
+git clone https://github.com/krswm/slope-rs.git
 ```
 
-### Step 2: Download the pretrained GPT-2 model from Hugging Face.
+Step 2: **Download the pretrained GPT-2 model from Hugging Face.**
 
 ```
 curl --progress-bar --location --remote-name --output-dir model --create-dirs 'https://huggingface.co/openai-community/gpt2/resolve/main/{config.json,vocab.json,merges.txt,model.safetensors}'
 ```
 
-### Step 3: Start generating text.
-
+Step 3: **Start generating text.**
 The GPT-2 model is not for chat conversation, but for text continuation.
 Watch the model continues your prompt.
 
 ```
-cd slope
-cargo run --release ../model 'In the future, artificial intelligence will be'
+cd slope-rs
+cargo run --release ../model 'Natural language processing is a branch of computer science. We study'
 ```
 
 Hit `Control+C` to stop generating text.
