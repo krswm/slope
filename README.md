@@ -4,7 +4,7 @@ I built a GPT-2 inference engine from scratch in Rust.
 
 ![Demo](asset/demo.gif)
 
-I also build [a Julia counterpart](https://github.com/krswm/slope-jl).
+I also built [a Julia counterpart](https://github.com/krswm/slope-jl).
 
 Last updated on 2026-07-18.
 
